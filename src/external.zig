@@ -2,22 +2,36 @@ const std = @import("std");
 
 const inner = @import("thermit.zig");
 
-pub const Event = inner.Event;
-pub const KeyEvent = inner.KeyEvent;
+// pub const Event = inner.Event;
+// pub const KeyEvent = inner.KeyEvent;
 
-pub export fn terminalRead(terminal: *Terminal, timeout: i32) !?Event {
-    return terminal.read(timeout);
+pub const Terminal = *anyopaque;
+
+pub const ThermitError = enum(u8) {
+    None = 0,
+    Generic = 1,
+};
+
+// pub export fn terminalRead(terminal: Terminal, timeout: i32) !?Event {
+//     const term: *inner.Terminal = @ptrCast(terminal);
+//     return try term.read(timeout);
+// }
+
+pub export fn terminalEnableRawMode(terminal: Terminal) ThermitError {
+    const term: *inner.Terminal = @ptrCast(terminal);
+    term.enableRawMode() catch {
+        return .Generic;
+    };
+    return .None;
 }
 
-pub export fn terminalEnableRawMode(terminal: *Terminal) !void {
-    return try terminal.enableRawMode();
+pub export fn terminalDisableRawMode(terminal: Terminal) ThermitError {
+    const term: *inner.Terminal = @ptrCast(terminal);
+    term.disableRawMode() catch {
+        return .Generic;
+    };
+    return .None;
 }
-
-pub export fn terminalDisableRawMode(terminal: *Terminal) !void {
-    return try terminal.disableRawMode();
-}
-
-pub const Terminal = inner.Terminal;
 
 // pub fn getWindowSize(fd: std.posix.fd_t) !struct { u16, u16 } {
 //     var win = std.mem.zeroes(std.posix.winsize);
