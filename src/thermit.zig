@@ -43,21 +43,54 @@ fn ctrl(comptime c: u8) u8 {
 }
 
 pub const Event = union(enum) {
-    End,
     Key: KeyEvent,
+    Resize: struct { u16, u16 },
     Timeout,
-    // Resize: struct { u16, u16 },
+    End,
+    Unknown,
 };
 
-pub const KeyEvent = union(enum) {
-    Char: u8,
-    Ctrl: u8,
-    Space,
+pub const KeyModifiers = packed struct(u2) {
+    pub const CTRL = KeyModifiers{ .ctrl = true };
+    ctrl: bool = false,
+    altr: bool = false,
+};
+
+pub const KeyEventType = enum(u8) {
+    Char,
     Return,
     Backspace,
-    Tab,
     Esc,
 };
+
+pub const KeyEvent = struct {
+    modifiers: KeyModifiers = .{},
+    eventtype: KeyEventType = .Char,
+    /// The value of the character, just a letter or simple escape code. When
+    /// `eventtype` is not equal to `.Char` then this is always 0. When it is
+    /// .Char, 0 repersents a null byte.
+    character: u8 = 0,
+};
+
+// const jmp = @cImport({
+//     @cInclude("setjmp.h");
+// });
+// fn t() void {
+//     var buf: jmp.jmp_buf = undefined;
+//     jmp.setjmp(buf); // sets a jump point and returns 0
+//     jmp.longjmp(buf, 1); // jumpts to point and returns 1 (value passed)
+// }
+
+/// If the signal handler for screen size changes has been installed
+var signalHandlerInstalled = false;
+/// A set of pipes to the signal handler to write to
+var handleDataPipe: std.posix.fd_t = -1;
+
+// fn handleSegfaultPosix(sig: i32, info: *const posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.C) noreturn {
+fn sigWinchHandler(_: i32, _: *const std.c.siginfo_t, _: ?*anyopaque) callconv(.C) void {
+    if (handleDataPipe < 0) return;
+    _ = std.posix.write(handleDataPipe, "x") catch 0;
+}
 
 pub const Terminal = struct {
     /// the file handle of this terminal, it is perfectly fine to use this for
@@ -67,53 +100,124 @@ pub const Terminal = struct {
     /// used for restoreing the terminal after raw mode
     oldtermios: ?std.posix.termios = null,
 
-    /// timeout: time in miliseconds to wait for a read
-    pub fn read(self: Terminal, timeout: i32) !Event {
-        var fds: [1]std.posix.pollfd = .{
-            std.posix.pollfd{
-                .fd = self.f.handle,
-                .events = std.posix.POLL.IN,
-                .revents = 0,
-            },
+    pollfds: [2]std.posix.pollfd,
+
+    /// Creates a new terminal, importantly does not take ownership of the file,
+    /// it is always valid to acsess it but it is still required to close it
+    /// independently of this structure. This is done so if you pass
+    /// `std.io.getStdErr` (which is the most common use case) to this it does not
+    /// try to close it.
+    ///
+    /// If you dont want this (possibly from opening "/dev/tty") you can just
+    /// do:
+    /// ```zig
+    /// defer {
+    ///     tty.f.close();
+    ///     tty.deinit();
+    /// }
+    /// ```
+    pub fn init(f: std.fs.File) !Terminal {
+        // install the global signal handler
+        if (!signalHandlerInstalled) {
+            signalHandlerInstalled = true;
+
+            // var old = std.mem.zeroes(std.posix.Sigaction);
+            try std.posix.sigaction(
+                std.posix.SIG.WINCH,
+                &std.posix.Sigaction{
+                    .handler = .{ .sigaction = sigWinchHandler },
+                    .mask = std.posix.empty_sigset,
+                    .flags = (std.posix.SA.SIGINFO | std.posix.SA.RESTART),
+                },
+                null,
+            );
+        }
+        if (handleDataPipe >= 0) return error.Occupied;
+
+        const pipe = try std.posix.pipe();
+        handleDataPipe = pipe[1];
+
+        const pollfds: [2]std.posix.pollfd = .{
+            .{ .fd = f.handle, .events = std.posix.POLL.IN, .revents = 0 },
+            .{ .fd = pipe[0], .events = std.posix.POLL.IN, .revents = 0 },
         };
 
-        const r = try std.posix.poll(&fds, timeout);
+        return .{ .f = f, .pollfds = pollfds };
+    }
+
+    pub fn deinit(self: Terminal) void {
+        // clean up our mess, signal handler continues to run with this
+        std.posix.close(handleDataPipe);
+        handleDataPipe = -1;
+
+        std.posix.close(self.pollfds[1].fd);
+    }
+
+    /// timeout: time in miliseconds to wait for a read
+    pub fn read(self: *Terminal, timeout: i32) !Event {
+        const r = try std.posix.poll(&self.pollfds, timeout);
         if (r == 0) return .Timeout;
 
-        std.debug.assert(fds[0].revents == std.posix.POLL.IN);
+        var bytes: [8]u8 = .{0} ** 8;
 
-        var b: [1]u8 = undefined;
-        const readsize = try self.f.read(&b);
+        if (self.pollfds[1].revents == std.posix.POLL.IN) {
+            const rs = try std.posix.read(self.pollfds[1].fd, &bytes);
+
+            std.debug.assert(std.mem.eql(u8, bytes[0..rs], "x"));
+            std.debug.assert(self.pollfds[1].revents == std.posix.POLL.IN);
+
+            self.pollfds[1].revents = 0; // reset
+
+            return .{ .Resize = try getWindowSize(self.pollfds[0].fd) };
+        }
+
+        std.debug.assert(self.pollfds[0].revents == std.posix.POLL.IN);
+        self.pollfds[0].revents = 0; // reset
+
+        const readsize = try self.f.read(&bytes);
         if (readsize == 0) return .End;
 
+        const b = bytes[0..readsize];
+
+        return parse(b);
+    }
+
+    fn parse(b: []const u8) Event {
         return switch (b[0]) {
-            'a'...'z' => .Key(.Char(b)),
-            'A'...'Z' => .Key(.Char(b)),
-            '\t' => .Key(.Tab),
-            ' ' => .Key(.Space),
-            '\r', '\n' => .Key(.Return),
+            'a'...'z' => .{ .Key = .{ .character = b[0] } },
+            'A'...'Z' => .{ .Key = .{ .character = b[0] } },
+            '\t' => .{ .Key = .{ .character = '\t' } },
+            ' ' => .{ .Key = .{ .character = ' ' } },
+            '\r', '\n' => .{ .Key = .{ .eventtype = .Return } },
             // ctrl('a')...ctrl('z') => .Key(.Ctrl(b + ctrl('a') - 1)),
             // '0'...'9' => {},
             // '/' => {},
-            // '\x1B' => {
-            //     // if (b.len < 2) { // esc
-            //     //     clearSearch(state);
-            //     //     state.repeat = 1;
-            //     //     continue;
-            //     // }
-            //     //
-            //     // switch (b[1]) {
-            //     //     '[' => {}, // TODO: parse_csi,
-            //     //     else => {
-            //     //         // repeat the parser, if it produces a key add the alt modifier else ignore `b1`
-            //     //     },
-            //     // }
-            // },
-            else => {
+            '\x1B' => blk: {
+                if (b.len < 2) break :blk .{ .Key = .{ .eventtype = .Esc } };
+                switch (b[1]) {
+                    '[' => {
+                        // TODO: parse_csi,
+
+                    },
+                    else => {
+                        // repeat the parser and add the alt modifier
+                        var ev = parse(b[1..]); // todo: if this returns an error then just return Esc from this block
+
+                        const isKey = switch (ev) {
+                            .Key => true,
+                            else => false,
+                        };
+
+                        if (isKey) ev.Key.modifiers.altr = true;
+                        break :blk ev;
+                    },
+                }
+            },
+            else => blk: {
                 // Some utf8 character I dont understand. The terminal should
                 // send the whole character in one read if possible so by just
                 // discarding the buffer the properly deals with it
-                error.Unknown;
+                break :blk .Unknown;
             },
         };
     }
@@ -170,7 +274,9 @@ pub const Terminal = struct {
     }
 };
 
-pub fn getWindowSize(fd: std.posix.fd_t) !struct { u16, u16 } {
+pub const Size = struct { u16, u16 };
+
+pub fn getWindowSize(fd: std.posix.fd_t) !Size {
     var win = std.mem.zeroes(std.posix.winsize);
 
     if (std.posix.system.ioctl(fd, std.posix.T.IOCGWINSZ, @intFromPtr(&win)) != 0) {

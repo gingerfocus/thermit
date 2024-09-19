@@ -28,6 +28,28 @@ pub fn build(b: *std.Build) void {
     // header.step.dependOn(&libthermit.step);
     // b.getInstallStep().dependOn(&header.step);
 
+    // ----------------------------- Examples ----------------------------------
+
+    const EXAMPLES = .{
+        .{
+            .name = "screensize",
+            .desc = "Example that prints the current screen size",
+        },
+    };
+
+    inline for (EXAMPLES) |example| {
+        const exe = b.addExecutable(.{
+            .name = example.name,
+            .root_source_file = b.path("src/bin/" ++ example.name ++ ".zig"),
+            .target = target,
+            .optimize = optimize,
+        });
+        exe.root_module.addImport("thermit", thermit);
+        const exampleStep = b.step("example-" ++ example.name, example.desc);
+        const exampleRun = b.addRunArtifact(exe);
+        exampleStep.dependOn(&exampleRun.step);
+    }
+
     // ------------------------------ Tests -----------------------------------
     const t = b.addTest(.{
         .root_source_file = b.path("src/thermit.zig"),
