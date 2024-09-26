@@ -1,55 +1,36 @@
-const std = @import("std");
-
-const inner = @import("thermit.zig");
+#ifndef THERMIT_H
+#define THERMIT_H
 
 // pub const Event = inner.Event;
 // pub const KeyEvent = inner.KeyEvent;
 
-const exter = @cImport({
-    @cInclude("thermit.h");
-});
+typedef Terminal *void;
 
-pub const Terminal = *anyopaque;
-
-pub const ThermitError = enum(u8) {
-    None = 0,
-    Generic = 1,
-};
+typedef ThermitError u8;
+#define ThermitErrorNone 0
+#define ThermitErrorGeneric 1
 
 // pub export fn terminalRead(terminal: Terminal, timeout: i32) !?Event {
 //     const term: *inner.Terminal = @ptrCast(terminal);
 //     return try term.read(timeout);
 // }
 
-pub export fn terminalEnableRawMode(terminal: Terminal) ThermitError {
-    const term: *inner.Terminal = @alignCast(@ptrCast(terminal));
-    term.enableRawMode() catch {
-        return .Generic;
-    };
-    return .None;
-}
+ThermitError terminalEnableRawMode(Terminal);
 
-pub export fn terminalDisableRawMode(terminal: Terminal) ThermitError {
-    const term: *inner.Terminal = @alignCast(@ptrCast(terminal));
-    term.disableRawMode() catch {
-        return .Generic;
-    };
-    return .None;
-}
+ThermitError terminalDisableRawMode(Terminal);
 
-pub const KeyEvent = inner.KeyEvent;
+// pub const KeyEvent = inner.KeyEvent;
+// enum EventType { Key, Resize, Timeout, End, Unknown };
 
-pub const EventType = enum(u8) { Key, Resize };
-
-pub const Event = extern struct {
-    type: EventType,
-    data: [@max(@sizeOf(KeyEvent), @sizeOf(struct { u16, u16 }))]u8,
-    // Key: KeyEvent,
-    // Resize: struct { u16, u16 },
-    // Timeout,
-    // End,
-    // Unknown,
-};
+// struct Event {
+//     type: EventType,
+//     data: [@max(@sizeOf(KeyEvent), @sizeOf(struct { u16, u16 }))]u8,
+//     // Key: KeyEvent,
+//     // Resize: struct { u16, u16 },
+//     // Timeout,
+//     // End,
+//     // Unknown,
+// };
 
 // pub fn getWindowSize(fd: std.posix.fd_t) !struct { u16, u16 } {
 //     var win = std.mem.zeroes(std.posix.winsize);
@@ -171,3 +152,4 @@ pub const CursorStyle = inner.CursorStyle;
 // pub fn leaveAlternateScreen(writer: anytype) !void {
 //     try writer.writeAll(csi("?1049l"));
 // }
+#endif /* THERMIT_H */

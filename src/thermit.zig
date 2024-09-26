@@ -50,10 +50,11 @@ pub const Event = union(enum) {
     Unknown,
 };
 
-pub const KeyModifiers = packed struct(u2) {
+pub const KeyModifiers = packed struct(u8) {
     pub const CTRL = KeyModifiers{ .ctrl = true };
     ctrl: bool = false,
     altr: bool = false,
+    _pad: u6 = 0,
 };
 
 pub const KeyEventType = enum(u8) {
@@ -63,9 +64,9 @@ pub const KeyEventType = enum(u8) {
     Esc,
 };
 
-pub const KeyEvent = struct {
-    modifiers: KeyModifiers = .{},
+pub const KeyEvent = extern struct {
     eventtype: KeyEventType = .Char,
+    modifiers: KeyModifiers = .{},
     /// The value of the character, just a letter or simple escape code. When
     /// `eventtype` is not equal to `.Char` then this is always 0. When it is
     /// .Char, 0 repersents a null byte.
@@ -86,8 +87,10 @@ var signalHandlerInstalled = false;
 /// A set of pipes to the signal handler to write to
 var handleDataPipe: std.posix.fd_t = -1;
 
-// fn handleSegfaultPosix(sig: i32, info: *const posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.C) noreturn {
-fn sigWinchHandler(_: i32, _: *const std.c.siginfo_t, _: ?*anyopaque) callconv(.C) void {
+// fn (sig: i32, info: *const posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.C) noreturn {
+fn sigWinchHandler(sig: i32, _: *const std.posix.siginfo_t, _: ?*anyopaque) callconv(.C) void {
+    std.debug.assert(sig == std.posix.SIG.WINCH);
+
     if (handleDataPipe < 0) return;
     _ = std.posix.write(handleDataPipe, "x") catch 0;
 }
@@ -184,35 +187,44 @@ pub const Terminal = struct {
 
     fn parse(b: []const u8) Event {
         return switch (b[0]) {
-            'a'...'z' => .{ .Key = .{ .character = b[0] } },
-            'A'...'Z' => .{ .Key = .{ .character = b[0] } },
-            '\t' => .{ .Key = .{ .character = '\t' } },
-            ' ' => .{ .Key = .{ .character = ' ' } },
+            // direct parse
+            'a'...'z',
+            'A'...'Z',
+            '0'...'9',
+            '\t',
+            ' ',
+            => .{ .Key = .{ .character = b[0] } },
+
             '\r', '\n' => .{ .Key = .{ .eventtype = .Return } },
-            // ctrl('a')...ctrl('z') => .Key(.Ctrl(b + ctrl('a') - 1)),
-            // '0'...'9' => {},
+
+            ctrl('a')...ctrl('h'), // '\t' = ctrl('i'), '\n' = ctrl('j')
+            ctrl('k')...ctrl('l'), // '\r' = ctrl('m')
+            ctrl('n')...ctrl('z'),
+            => .{ .Key = KeyEvent{
+                .modifiers = KeyModifiers.CTRL,
+                .character = ('a' + b[0] - 1),
+            } },
             // '/' => {},
             '\x1B' => blk: {
                 if (b.len < 2) break :blk .{ .Key = .{ .eventtype = .Esc } };
                 switch (b[1]) {
                     '[' => {
                         // TODO: parse_csi,
-
                     },
                     else => {
                         // repeat the parser and add the alt modifier
                         var ev = parse(b[1..]); // todo: if this returns an error then just return Esc from this block
 
-                        const isKey = switch (ev) {
-                            .Key => true,
-                            else => false,
-                        };
+                        switch (ev) {
+                            .Key => ev.Key.modifiers.altr = true,
+                            else => {},
+                        }
 
-                        if (isKey) ev.Key.modifiers.altr = true;
                         break :blk ev;
                     },
                 }
             },
+            0 => .End,
             else => blk: {
                 // Some utf8 character I dont understand. The terminal should
                 // send the whole character in one read if possible so by just

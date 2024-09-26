@@ -16,17 +16,19 @@ pub fn build(b: *std.Build) void {
 
     // ----------------------------- Library -----------------------------------
 
-    // const libthermit = b.addStaticLibrary(.{
-    //     .name = "thermit",
-    //     .root_source_file = b.path("src/external.zig"),
-    //     .optimize = optimize,
-    //     .target = target,
-    // });
-    // b.installArtifact(libthermit);
-    //
-    // const header = b.addInstallFile(libthermit.getEmittedH(), "include/thermit.h");
-    // header.step.dependOn(&libthermit.step);
-    // b.getInstallStep().dependOn(&header.step);
+    const libthermit = b.addSharedLibrary(.{
+        .name = "thermit",
+        .root_source_file = b.path("src/external.zig"),
+        .optimize = .ReleaseFast,
+        .target = target,
+    });
+    libthermit.addIncludePath(b.path("src"));
+
+    const header = b.addInstallHeaderFile(b.path("src/thermit.h"), "thermit.h");
+
+    const libs = b.step("lib", "Build the library");
+    libs.dependOn(&libthermit.step);
+    libs.dependOn(&header.step);
 
     // ----------------------------- Examples ----------------------------------
 
