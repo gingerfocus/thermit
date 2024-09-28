@@ -14,6 +14,12 @@ pub fn build(b: *std.Build) void {
     });
     spinner.addImport("thermit", thermit);
 
+    // an reference implementation of thermit
+    const scinee = b.addModule("scinee", .{
+        .root_source_file = b.path("src/scinee.zig"),
+    });
+    scinee.addImport("thermit", thermit);
+
     // ----------------------------- Library -----------------------------------
 
     const libthermit = b.addSharedLibrary(.{
@@ -36,6 +42,12 @@ pub fn build(b: *std.Build) void {
         .{
             .name = "screensize",
             .desc = "Example that prints the current screen size",
+            .need = .thermit,
+        },
+        .{
+            .name = "tuianimation",
+            .desc = "Example that shows a basic animation",
+            .need = .scinee,
         },
     };
 
@@ -46,7 +58,15 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
-        exe.root_module.addImport("thermit", thermit);
+        switch (example.need) {
+            .thermit => {
+                exe.root_module.addImport("thermit", thermit);
+            },
+            .scinee => {
+                exe.root_module.addImport("scinee", scinee);
+            },
+            else => {},
+        }
         const exampleStep = b.step("example-" ++ example.name, example.desc);
         const exampleRun = b.addRunArtifact(exe);
         exampleStep.dependOn(&exampleRun.step);
