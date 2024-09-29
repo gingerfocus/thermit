@@ -35,50 +35,39 @@ pub fn main() !void {
     // std.time.sleep(std.time.ns_per_s * 3);
 }
 
-const statusbarHeight = 3;
-const sidebarWidth = 5;
+const statbarH = 3;
+const sidebarW = 5;
 
 fn fullRedraw(term: *scinee.Term, start: i64) !void {
-
     // line numbers
     const leftside = .{
         .x = 0,
         .y = 0,
-        .w = sidebarWidth,
-        .h = term.size[1] - statusbarHeight,
+        .w = sidebarW,
+        .h = term.size[1] - statbarH,
     };
 
     for (0..leftside.h) |r| {
         var buf: [4]u8 = .{ ' ', ' ', ' ', '|' };
         const out = try std.fmt.bufPrint(&buf, "{}", .{r});
         std.debug.assert(out.len < 3);
-        term.draw(leftside, @intCast(r), 1, &buf);
+        try term.draw(leftside, @intCast(r), 1, &buf);
     }
 
-    const statusbar = .{
-        .x = 0,
-        .y = term.size[1] - statusbarHeight,
-        .w = term.size[0],
-        .h = statusbarHeight,
-    };
+    const statusbar = term.makeScreen(0, term.size[1] - statbarH, null, statbarH);
 
     var buf: [256]u8 = undefined;
     @memset(&buf, '>');
-    term.draw(statusbar, 0, 0, buf[0..statusbar.w]);
+    try term.draw(statusbar, 0, 0, &buf);
 
-    term.draw(statusbar, 1, 3, "footer text");
-    term.draw(statusbar, 2, 6, "animation example");
+    try term.draw(statusbar, 1, 3, "footer text");
+    try term.draw(statusbar, 2, 6, "animation example");
 
     try screenRedraw(term, start);
 }
 
 fn screenRedraw(term: *scinee.Term, start: i64) !void {
-    const mainscreen = .{
-        .x = sidebarWidth,
-        .y = 0,
-        .w = term.size[0] - sidebarWidth,
-        .h = term.size[1] - statusbarHeight,
-    };
+    const mainscreen = term.makeScreen(sidebarW, 0, null, term.size[1] - statbarH);
 
     const now = std.time.milliTimestamp();
     const diff: f64 = @floatFromInt(now - start);
@@ -94,6 +83,6 @@ fn screenRedraw(term: *scinee.Term, start: i64) !void {
             b.* = if (l < 0.2) ' ' else if (l < 1.0) '.' else '0';
         }
         const row: u16 = @intCast(r);
-        term.draw(mainscreen, row, 0, &buf);
+        try term.draw(mainscreen, row, 0, &buf);
     }
 }

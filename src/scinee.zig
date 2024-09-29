@@ -4,7 +4,8 @@ const std = @import("std");
 pub const Term = struct {
     tty: term.Terminal,
 
-    frameBuffer: []u8,
+    // frameBuffer: []u8,
+    frameBuffer: std.ArrayListUnmanaged(u8),
     size: term.Size,
 
     a: std.mem.Allocator,
@@ -21,77 +22,77 @@ pub const Term = struct {
 
         const size = try term.getWindowSize(fd);
 
-        const x, const y = size;
-        const frameBuffer = try a.alloc(u8, x * y);
-        @memset(frameBuffer, 0);
+        // const x, const y = size;
+        // const frameBuffer = try a.alloc(u8, x * y);
+        // @memset(frameBuffer, 0);
 
         return .{
             .tty = tty,
-            .frameBuffer = frameBuffer,
+            // .frameBuffer = frameBuffer,
+            .frameBuffer = try std.ArrayListUnmanaged(u8).initCapacity(a, size[0] * size[1]),
             .size = size,
             .a = a,
         };
     }
 
-    pub const Screen = packed struct(u64) {
-        x: u16,
-        y: u16,
-        w: u16,
-        h: u16,
-    };
+    pub const Screen = packed struct(u64) { x: u16, y: u16, w: u16, h: u16 };
 
-    pub fn draw(self: Term, screen: Screen, row: u16, pad: u16, arg_data: []const u8) void {
-        var data = arg_data;
+    /// Creates a screen at the given position, if width or height is null then
+    /// it extends to the end of the screen
+    pub fn makeScreen(self: Term, x: u16, y: u16, w: ?u16, h: ?u16) Screen {
+        return .{
+            .x = x,
+            .y = y,
+            .w = w orelse self.size[0] - x,
+            .h = h orelse self.size[1] - y,
+        };
+    }
+
+    pub fn draw(self: *Term, screen: Screen, row: u16, col: u16, data: []const u8) !void {
         std.debug.assert(screen.x <= self.size[0]);
         std.debug.assert(screen.y <= self.size[1]);
         std.debug.assert(row <= screen.h);
-        std.debug.assert(pad <= screen.w);
+        std.debug.assert(col <= screen.w);
 
-        const offset = (screen.y + row) * self.size[0] + screen.x;
-        var line = self.frameBuffer[offset .. offset + screen.w];
+        var wr = self.frameBuffer.writer(self.a);
 
-        // std.debug.assert(data.len <= screen.w - pad);
-        @memset(line[0..pad], 0);
-        line = line[pad..];
-
-        if (data.len <= line.len) {
-            line = line[0..data.len];
-        } else {
-            data = data[0..line.len];
-        }
-        @memcpy(line, data);
+        try term.moveCol(wr, screen.x + col);
+        try term.moveRow(wr, screen.y + row);
+        const len = self.size[0] - (screen.x + col);
+        const line = if (data.len > len) data[0..len] else data;
+        try wr.writeAll(line);
     }
 
     pub fn start(self: *Term, resize: bool) !void {
         if (resize) {
             self.size = try term.getWindowSize(self.tty.f.handle);
-            self.frameBuffer = try self.a.realloc(self.frameBuffer, self.size[0] * self.size[1]);
         }
-        @memset(self.frameBuffer, 0);
+        self.frameBuffer.shrinkRetainingCapacity(0);
     }
 
     /// Flushes out the current buffer to the screen
     pub fn finish(self: Term) !void {
-        const x, const y = self.size;
+        // const x, const y = self.size;
 
-        var buf = std.ArrayList(u8).init(self.a);
-        defer buf.deinit();
-        const wr = buf.writer();
-
-        try term.moveTo(wr, 0, 0);
-        // try term.clear(wr, .All);
-
-        for (0..y) |r| {
-            const data = self.frameBuffer[r * x .. (r + 1) * x];
-            const trim = std.mem.trim(u8, data, &.{0});
-            const st: u16 = @intCast(@intFromPtr(trim.ptr - @as(usize, @intFromPtr(data.ptr))));
-
-            try term.moveCol(wr, st);
-            try wr.writeAll(trim);
-            try term.nextLine(wr, 1);
-        }
-
-        try self.tty.f.writeAll(buf.items);
+        // var buf = std.ArrayList(u8).init(self.a);
+        // defer buf.deinit();
+        // const wr = buf.writer();
+        //
+        // try term.moveTo(wr, 0, 0);
+        // // try term.clear(wr, .All);
+        //
+        // for (0..y) |r| {
+        //     const data = self.frameBuffer[r * x .. (r + 1) * x];
+        //     const trim = std.mem.trim(u8, data, &.{0});
+        //     const st: u16 = @intCast(@intFromPtr(trim.ptr - @as(usize, @intFromPtr(data.ptr))));
+        //
+        //     try term.moveCol(wr, st);
+        //     try wr.writeAll(trim);
+        //     try term.nextLine(wr, 1);
+        // }
+        //
+        // try self.tty.f.writeAll(buf.items);
+        try self.tty.f.writeAll(self.frameBuffer.items);
 
         try std.posix.syncfs(self.tty.f.handle);
     }
@@ -102,7 +103,10 @@ pub const Term = struct {
         self.tty.disableRawMode() catch {};
         term.leaveAlternateScreen(self.tty.f.writer()) catch {};
 
+        self.tty.f.close();
+
         self.tty.deinit();
-        self.a.free(self.frameBuffer);
+        self.frameBuffer.deinit(self.a);
+        // self.a.free(self.frameBuffer);
     }
 };
