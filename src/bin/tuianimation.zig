@@ -1,10 +1,19 @@
 const scinee = @import("scinee");
 const std = @import("std");
 
+pub const std_options: std.Options = .{
+    .logFn = scinee.log.logFile,
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const a = gpa.allocator();
+
+    const f = try std.fs.cwd().createFile("example.log", .{});
+
+    scinee.log.initFile(f);
+    defer scinee.log.deinitFile();
 
     var term = try scinee.Term.init(a);
     defer term.deinit();
@@ -20,14 +29,14 @@ pub fn main() !void {
 
         var full = false;
         switch (ev) {
-            .Key => |ke| if (ke.character == 'q') break,
+            .Key => |ke| if (ke.character.b() == 'q') break,
             .Resize => full = true,
             else => {},
         }
 
         try term.start(full);
-        if (full) try fullRedraw(&term, start) //
-        else try screenRedraw(&term, start); //
+
+        if (full) try fullRedraw(&term, start) else try screenRedraw(&term, start);
 
         try term.finish();
     }

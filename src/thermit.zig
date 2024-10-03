@@ -51,26 +51,97 @@ pub const Event = union(enum) {
 };
 
 pub const KeyModifiers = packed struct(u8) {
-    pub const CTRL = KeyModifiers{ .ctrl = true };
+    shft: bool = false,
     ctrl: bool = false,
     altr: bool = false,
-    _pad: u6 = 0,
+    _pad: u5 = 0,
+
+    /// Convience meathod for getting the bits
+    pub fn bits(self: KeyModifiers) u8 {
+        return @bitCast(self);
+    }
+
+    pub const CTRL = KeyModifiers{ .ctrl = true };
 };
 
-pub const KeyEventType = enum(u8) {
-    Char,
-    Return,
-    Backspace,
+pub const KeyCharacter = enum(u8) {
+    None = 0,
+    a = 'a',
+    b = 'b',
+    c = 'c',
+    d = 'd',
+    e = 'e',
+    f = 'f',
+    g = 'g',
+    h = 'h',
+    i = 'i',
+    j = 'j',
+    k = 'k',
+    l = 'l',
+    m = 'm',
+    n = 'n',
+    o = 'o',
+    p = 'p',
+    q = 'q',
+    r = 'r',
+    s = 's',
+    t = 't',
+    u = 'u',
+    v = 'v',
+    w = 'w',
+    x = 'x',
+    y = 'y',
+    z = 'z',
+    A = 'A',
+    B = 'B',
+    C = 'C',
+    D = 'D',
+    E = 'E',
+    F = 'F',
+    G = 'G',
+    H = 'H',
+    I = 'I',
+    J = 'J',
+    K = 'K',
+    L = 'L',
+    M = 'M',
+    N = 'N',
+    O = 'O',
+    P = 'P',
+    Q = 'Q',
+    R = 'R',
+    S = 'S',
+    T = 'T',
+    U = 'U',
+    V = 'V',
+    W = 'W',
+    X = 'X',
+    Y = 'Y',
+    Z = 'Z',
+    N0 = '0',
+    N1 = '1',
+    N2 = '2',
+    N3 = '3',
+    N4 = '4',
+    N5 = '5',
+    N6 = '6',
+    N7 = '7',
+    N8 = '8',
+    N9 = '9',
+    Return = '\n',
     Esc,
+    Backspace,
+
+    pub fn b(self: KeyCharacter) u8 {
+        return @intFromEnum(self);
+    }
 };
 
 pub const KeyEvent = extern struct {
-    eventtype: KeyEventType = .Char,
+    character: KeyCharacter = .None,
     modifiers: KeyModifiers = .{},
-    /// The value of the character, just a letter or simple escape code. When
-    /// `eventtype` is not equal to `.Char` then this is always 0. When it is
-    /// .Char, 0 repersents a null byte.
-    character: u8 = 0,
+
+    // pub fn eql(lhs: KeyEvent, rhs: KeyEvent) bool { }
 };
 
 // const jmp = @cImport({
@@ -115,8 +186,8 @@ pub const Terminal = struct {
     /// do:
     /// ```zig
     /// defer {
-    ///     tty.f.close();
     ///     tty.deinit();
+    ///     tty.f.close();
     /// }
     /// ```
     pub fn init(f: std.fs.File) !Terminal {
@@ -189,24 +260,30 @@ pub const Terminal = struct {
         return switch (b[0]) {
             // direct parse
             'a'...'z',
-            'A'...'Z',
             '0'...'9',
             '\t',
             ' ',
-            => .{ .Key = .{ .character = b[0] } },
+            => .{ .Key = .{ .character = @enumFromInt(b[0]) } },
 
-            '\r', '\n' => .{ .Key = .{ .eventtype = .Return } },
+            'A'...'Z' => .{
+                .Key = .{
+                    .character = @enumFromInt(b[0]),
+                    .modifiers = .{ .shft = true },
+                },
+            },
+
+            '\r', '\n' => .{ .Key = .{ .character = .Return } },
 
             ctrl('a')...ctrl('h'), // '\t' = ctrl('i'), '\n' = ctrl('j')
             ctrl('k')...ctrl('l'), // '\r' = ctrl('m')
             ctrl('n')...ctrl('z'),
             => .{ .Key = KeyEvent{
                 .modifiers = KeyModifiers.CTRL,
-                .character = ('a' + b[0] - 1),
+                .character = @enumFromInt('a' + b[0] - 1),
             } },
             // '/' => {},
             '\x1B' => blk: {
-                if (b.len < 2) break :blk .{ .Key = .{ .eventtype = .Esc } };
+                if (b.len < 2) break :blk .{ .Key = .{ .character = .Esc } };
                 switch (b[1]) {
                     '[' => {
                         // TODO: parse_csi,
@@ -302,7 +379,7 @@ pub fn csi(comptime expr: []const u8) []const u8 {
 }
 
 pub fn moveTo(writer: anytype, x: u16, y: u16) !void {
-    try std.fmt.format(writer, csi("{};{}H"), .{ x + 1, y + 1 });
+    try std.fmt.format(writer, csi("{};{}H"), .{ y + 1, x + 1 });
 }
 
 /// move down one line and moves cursor to start of line

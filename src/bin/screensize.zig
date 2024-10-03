@@ -16,7 +16,6 @@ pub fn main() !void {
     var renders: u16 = 0;
 
     var sz = try thermit.getWindowSize(tty.f.handle);
-    // var x, var y = try thermit.getWindowSize(tty.f.handle);
 
     renders += 1;
     try draw(wr, sz, renders);
@@ -27,10 +26,7 @@ pub fn main() !void {
         var end = false;
 
         switch (e) {
-            // This is not recomended: however, it works beacuse if `eventtype`
-            // is anything other than Char then character must be 0, which
-            // still gives the correct result.
-            .Key => |ke| end = (ke.character == 'q'),
+            .Key => |ke| end = (ke.character.b() == 'q'),
             .End => end = true,
             .Resize => |size| {
                 sz = size;

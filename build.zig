@@ -49,6 +49,11 @@ pub fn build(b: *std.Build) void {
             .desc = "Example that shows a basic animation",
             .need = .scinee,
         },
+        .{
+            .name = "readme",
+            .desc = "Example that shows a basic animation",
+            .need = .scinee,
+        },
     };
 
     inline for (EXAMPLES) |example| {
