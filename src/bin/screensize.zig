@@ -32,8 +32,7 @@ pub fn main() !void {
                 sz = size;
                 drw = true;
             },
-            .Timeout => {},
-            .Unknown => {},
+            .Timeout, .Unknown => {},
         }
         if (end) return;
 

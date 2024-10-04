@@ -1,5 +1,7 @@
-const term = @import("thermit");
+pub const thermit = @import("thermit");
+
 const std = @import("std");
+const trm = thermit;
 
 // pub const FrameBuffers = std.AutoArrayHashMapUnmanaged(
 //     Term.Screen,
@@ -76,7 +78,7 @@ const Modifier = packed struct(u8) {
 };
 
 const Cell = struct {
-    symbol: [4]u8,
+    symbol: u21,
     fg: Color,
     bg: Color,
     mod: Modifier,
@@ -87,16 +89,14 @@ const Cell = struct {
     // y: u16,
 
     pub inline fn setSymbol(self: *Cell, char: u21) void {
-        // const p: *align(1) u32 = @alignCast(@ptrCast(&self.symbol));
-        // p.* = char;
-        @memcpy(&self.symbol, std.mem.asBytes(&char));
+        self.symbol = char;
     }
 };
 
 pub const Term = struct {
-    tty: term.Terminal,
+    tty: trm.Terminal,
     buffer: []Cell,
-    size: term.Size,
+    size: trm.Size,
 
     a: std.mem.Allocator,
 
@@ -104,13 +104,12 @@ pub const Term = struct {
         const fd = try std.posix.open("/dev/tty", .{ .ACCMODE = .RDWR }, 0);
         const file = std.fs.File{ .handle = fd };
 
-        try term.enterAlternateScreen(file.writer());
-        var tty = try term.Terminal.init(file);
+        try trm.enterAlternateScreen(file.writer());
+        var tty = try trm.Terminal.init(file);
 
         try tty.enableRawMode();
-        try term.cursorHide(file.writer());
 
-        const size = try term.getWindowSize(fd);
+        const size = try trm.getWindowSize(fd);
 
         const buffer = try a.alloc(Cell, size[0] * size[1]);
 
@@ -157,9 +156,8 @@ pub const Term = struct {
         while (utf8.nextCodepoint()) |c| {
             if (i >= screen.w) break;
 
-            const cell = self.getCell(screen.x + col + i, screen.y + row) orelse continue;
+            const cell = self.getCell(screen.x + col + i, screen.y + row) orelse return;
             cell.setSymbol(c);
-            // @memcpy(&cell.symbol, std.mem.asBytes(&c));
 
             i += 1;
         }
@@ -167,7 +165,7 @@ pub const Term = struct {
 
     pub fn start(self: *Term, resize: bool) !void {
         if (resize) {
-            self.size = try term.getWindowSize(self.tty.f.handle);
+            self.size = try trm.getWindowSize(self.tty.f.handle);
             self.buffer = try self.a.realloc(self.buffer, self.size[0] * self.size[1]);
         }
         @memset(std.mem.asBytes(self.buffer), 0);
@@ -197,24 +195,16 @@ pub const Term = struct {
             if (pos[0] + 1 == x and pos[1] == y) {
                 // std.log.info("skiped a move command", .{});
             } else {
-                try term.moveTo(wr, x, y);
+                try trm.moveTo(wr, x, y);
             }
             pos = .{ x, y };
 
             // TODO: check modifier is same and change update if not
             // TODO: "   " colors   "                              "
 
-            try wr.writeAll(&cell.symbol);
-
-            // // render character, skiping any trailing null bytes
-            // for (cell.symbol) |c| {
-            //     // current meathod of handling unicode points is to memcpy them
-            //     // in which means the null byte is leading. also it valid for
-            //     // most terms to write null bytes so this should to be profled
-            //     // to see if it really saves time
-            //     if (c == 0) continue;
-            //     try buf.append(c);
-            // }
+            var codepoint: [4]u8 = undefined;
+            const s = try std.unicode.utf8Encode(cell.symbol, &codepoint);
+            try wr.writeAll(codepoint[0..s]);
         }
         // TODO: reset all color and attris at end
 
@@ -225,15 +215,12 @@ pub const Term = struct {
         try std.posix.syncfs(self.tty.f.handle);
     }
 
-    // fn finish2(self: Term) !void {
-    // }
-
     pub fn deinit(self: *Term) void {
         const wr = self.tty.f.writer();
-        term.cursorShow(wr) catch {};
+        trm.cursorShow(wr) catch {};
 
         self.tty.disableRawMode() catch {};
-        term.leaveAlternateScreen(wr) catch {};
+        trm.leaveAlternateScreen(wr) catch {};
 
         self.tty.f.close();
         self.tty.deinit();
@@ -245,14 +232,19 @@ pub const Term = struct {
 pub const log = struct {
     var logOutputFile: ?std.fs.File = null;
 
-    pub fn initFile(f: std.fs.File) void {
+    /// File ownership is still maintained by the caller and *you* must close
+    // it. If you need acsess to it at a later point use `getFile`. Argument
+    // can be null which removes the log file.
+    pub fn setFile(f: ?std.fs.File) void {
         logOutputFile = f;
     }
-    pub fn deinitFile() void {
-        if (logOutputFile) |f| f.close();
+
+    /// Gets the file used for logging if any
+    pub fn getFile() ?std.fs.File {
+        return logOutputFile;
     }
 
-    pub fn logFile(
+    pub fn toFile(
         comptime message_level: std.log.Level,
         comptime scope: @TypeOf(.enum_literal),
         comptime format: []const u8,
@@ -265,7 +257,7 @@ pub const log = struct {
         }
     }
 
-    pub fn logNull(
+    pub fn toNull(
         comptime message_level: std.log.Level,
         comptime scope: @TypeOf(.enum_literal),
         comptime format: []const u8,

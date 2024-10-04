@@ -1,8 +1,10 @@
-const scinee = @import("scinee");
 const std = @import("std");
+const scu = @import("scinee");
+
+const trm = scu.thermit;
 
 pub const std_options: std.Options = .{
-    .logFn = scinee.log.logFile,
+    .logFn = scu.log.toFile,
 };
 
 pub fn main() !void {
@@ -11,14 +13,16 @@ pub fn main() !void {
     const a = gpa.allocator();
 
     const f = try std.fs.cwd().createFile("example.log", .{});
+    defer f.close();
+    scu.log.setFile(f);
 
-    scinee.log.initFile(f);
-    defer scinee.log.deinitFile();
-
-    var term = try scinee.Term.init(a);
+    var term = try scu.Term.init(a);
     defer term.deinit();
 
     const start = std.time.milliTimestamp();
+
+    try trm.cursorHide(term.tty.f.writer());
+    defer trm.cursorShow(term.tty.f.writer()) catch {};
 
     try term.start(false);
     try fullRedraw(&term, start);
@@ -47,7 +51,7 @@ pub fn main() !void {
 const statbarH = 3;
 const sidebarW = 5;
 
-fn fullRedraw(term: *scinee.Term, start: i64) !void {
+fn fullRedraw(term: *scu.Term, start: i64) !void {
     // line numbers
     const leftside = .{
         .x = 0,
@@ -75,7 +79,7 @@ fn fullRedraw(term: *scinee.Term, start: i64) !void {
     try screenRedraw(term, start);
 }
 
-fn screenRedraw(term: *scinee.Term, start: i64) !void {
+fn screenRedraw(term: *scu.Term, start: i64) !void {
     const mainscreen = term.makeScreen(sidebarW, 0, null, term.size[1] - statbarH);
 
     const now = std.time.milliTimestamp();

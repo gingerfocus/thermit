@@ -4,22 +4,22 @@ The most minimal terminal library you didnt know you needed.
 
 ## Installing
 ```bash
-zig fetch --save=thermit git+https://github.com/gingerfocus/thermit
+zig fetch --save=terminal git+https://github.com/gingerfocus/thermit
 ```
 
 ```zig
-const thermit = b.dependency("thermit", .{ .target = target, .optimize = optimize });
-// exe.root_module.addImport("thermit", thermit.module("thermit"));
-exe.root_module.addImport("scinee", thermit.module("scinee"));
+const terminal = b.dependency("terminal", .{ .target = target, .optimize = optimize });
+exe.root_module.addImport("thermit", terminal.module("thermit"));
+exe.root_module.addImport("scured", terminal.module("scured"));
 ```
 
 
-Set the log function to not pollute the terminal, alternativly see `scinee.log.logFile`
+Set the log function to not pollute the terminal, alternativly see `scu.log.logFile`
 ```zig
-const scinee = @import("scinee");
+const scu = @import("scured");
 
 pub const std_options: std.Options = .{
-    .logFn = scinee.log.logNull,
+    .logFn = scu.log.logNull,
 };
 ```
 
@@ -30,7 +30,7 @@ zig run example-tuianimation
 ```
 
 ```zig
-var term = try scinee.Term.init(allocator);
+var term = try scu.Term.init(allocator);
 defer term.deinit();
 
 try term.start(false); // clears the render buffer

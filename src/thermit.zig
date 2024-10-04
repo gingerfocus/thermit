@@ -1,47 +1,5 @@
 const std = @import("std");
 
-// pub const Command = struct {
-//     func: *const fn (*anyopaque, std.io.AnyWriter) void,
-//     data: *anyopaque,
-//
-//     fn run(self: Command, w: std.io.AnyWriter) void {
-//         return self.func(self.data, w);
-//     }
-// };
-// pub const MoveTo = struct {
-//     x: u16,
-//     y: u16,
-//
-//     pub fn command(self: *MoveTo) Command {
-//         return .{
-//             .func = MoveTo.exec,
-//             .data = self,
-//         };
-//     }
-//
-//     pub fn exec(p: *anyopaque, w: std.io.AnyWriter) void {
-//         const self: *MoveTo = @ptrCast(@alignCast(p));
-//         moveTo(w, self.x, self.y) catch return;
-//     }
-// };
-// test "thing" {
-//     const f = std.io.getStdOut();
-//
-//     var move = MoveTo{ .x = 3, .y = 4 };
-//
-//     execute(f.writer().any(), &.{
-//         move.command(),
-//     });
-// }
-// pub fn execute(w: std.io.AnyWriter, commands: []const Command) void {
-//     for (commands) |command| command.run(w);
-//     // w.flush();
-// }
-
-fn ctrl(comptime c: u8) u8 {
-    return c - 'a' + 1;
-}
-
 pub const Event = union(enum) {
     Key: KeyEvent,
     Resize: struct { u16, u16 },
@@ -130,28 +88,33 @@ pub const KeyCharacter = enum(u8) {
     N9 = '9',
     Return = '\n',
     Esc,
-    Backspace,
+    Backspace, //= '\b',
 
     pub fn b(self: KeyCharacter) u8 {
         return @intFromEnum(self);
     }
 };
 
-pub const KeyEvent = extern struct {
+pub const KeyEvent = packed struct(u16) {
     character: KeyCharacter = .None,
     modifiers: KeyModifiers = .{},
 
     // pub fn eql(lhs: KeyEvent, rhs: KeyEvent) bool { }
 };
 
-// const jmp = @cImport({
-//     @cInclude("setjmp.h");
-// });
-// fn t() void {
-//     var buf: jmp.jmp_buf = undefined;
-//     jmp.setjmp(buf); // sets a jump point and returns 0
-//     jmp.longjmp(buf, 1); // jumpts to point and returns 1 (value passed)
-// }
+pub inline fn keybits(self: KeyCharacter) u8 {
+    return @intFromEnum(self);
+}
+
+pub inline fn evbits(ev: KeyEvent) u16 {
+    return @bitCast(ev);
+}
+
+pub inline fn ctrlev(ch: KeyCharacter) KeyEvent {
+    return KeyEvent{ .character = ch, .modifiers = .{ .ctrl = true } };
+}
+
+// ---------------------------- Local Helpers-----------------------------------
 
 /// If the signal handler for screen size changes has been installed
 var signalHandlerInstalled = false;
@@ -165,6 +128,12 @@ fn sigWinchHandler(sig: i32, _: *const std.posix.siginfo_t, _: ?*anyopaque) call
     if (handleDataPipe < 0) return;
     _ = std.posix.write(handleDataPipe, "x") catch 0;
 }
+
+fn ctrl(comptime c: u8) u8 {
+    return c - 'a' + 1;
+}
+
+// -----------------------------------------------------------------------------
 
 pub const Terminal = struct {
     /// the file handle of this terminal, it is perfectly fine to use this for
@@ -268,7 +237,7 @@ pub const Terminal = struct {
             'A'...'Z' => .{
                 .Key = .{
                     .character = @enumFromInt(b[0]),
-                    .modifiers = .{ .shft = true },
+                    // .modifiers = .{ .shft = true },
                 },
             },
 
@@ -287,6 +256,7 @@ pub const Terminal = struct {
                 switch (b[1]) {
                     '[' => {
                         // TODO: parse_csi,
+                        break :blk .Unknown;
                     },
                     else => {
                         // repeat the parser and add the alt modifier
@@ -504,3 +474,12 @@ pub fn enterAlternateScreen(writer: anytype) !void {
 pub fn leaveAlternateScreen(writer: anytype) !void {
     try writer.writeAll(csi("?1049l"));
 }
+
+// const jmp = @cImport({
+//     @cInclude("setjmp.h");
+// });
+// fn t() void {
+//     var buf: jmp.jmp_buf = undefined;
+//     jmp.setjmp(buf); // sets a jump point and returns 0
+//     jmp.longjmp(buf, 1); // jumpts to point and returns 1 (value passed)
+// }

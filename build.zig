@@ -15,10 +15,10 @@ pub fn build(b: *std.Build) void {
     spinner.addImport("thermit", thermit);
 
     // an reference implementation of thermit
-    const scinee = b.addModule("scinee", .{
-        .root_source_file = b.path("src/scinee.zig"),
+    const scured = b.addModule("scured", .{
+        .root_source_file = b.path("src/scured.zig"),
     });
-    scinee.addImport("thermit", thermit);
+    scured.addImport("thermit", thermit);
 
     // ----------------------------- Library -----------------------------------
 
@@ -68,7 +68,7 @@ pub fn build(b: *std.Build) void {
                 exe.root_module.addImport("thermit", thermit);
             },
             .scinee => {
-                exe.root_module.addImport("scinee", scinee);
+                exe.root_module.addImport("scinee", scured);
             },
             else => {},
         }
