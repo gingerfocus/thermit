@@ -87,11 +87,58 @@ pub const KeyCharacter = enum(u8) {
     N8 = '8',
     N9 = '9',
     Return = '\n',
+    Space = ' ',
     Esc,
-    Backspace, //= '\b',
+    Backspace,
 
     pub fn b(self: KeyCharacter) u8 {
         return @intFromEnum(self);
+    }
+};
+
+/// Function for casting events into bits to be matched on. You could use these
+/// as is but it is recomended to rename them to be shorter in your scope.
+/// ```zig
+/// const norm = thr.keys.norm;
+/// const ctrl = thr.keys.ctrl;
+/// const altr = thr.keys.altr;
+/// ```
+/// OR
+/// ```zig
+/// usingnamespace thr.keys;
+/// ```
+/// You can then do something like:
+/// ```zig
+/// const key: KeyEvent = ...;
+/// switch (thr.keys.bits(key)) {
+///     norm(.q), ctrl(.c) => { ... },
+///     norm(.Enter), => { ... },
+///     else => {},
+/// }
+/// ```
+pub const keys = struct {
+    pub inline fn norm(c: KeyCharacter) u16 {
+        return @bitCast(KeyEvent{ .character = c });
+    }
+
+    pub inline fn ctrl(c: KeyCharacter) u16 {
+        const keyev = KeyEvent{
+            .character = c,
+            .modifiers = .{ .ctrl = true },
+        };
+        return @bitCast(keyev);
+    }
+
+    pub inline fn altr(c: KeyCharacter) u16 {
+        const keyev = KeyEvent{
+            .character = c,
+            .modifiers = .{ .altr = true },
+        };
+        return @bitCast(keyev);
+    }
+
+    pub inline fn bits(ev: KeyEvent) u16 {
+        return @bitCast(ev);
     }
 };
 
@@ -101,18 +148,6 @@ pub const KeyEvent = packed struct(u16) {
 
     // pub fn eql(lhs: KeyEvent, rhs: KeyEvent) bool { }
 };
-
-pub inline fn keybits(self: KeyCharacter) u8 {
-    return @intFromEnum(self);
-}
-
-pub inline fn evbits(ev: KeyEvent) u16 {
-    return @bitCast(ev);
-}
-
-pub inline fn ctrlev(ch: KeyCharacter) KeyEvent {
-    return KeyEvent{ .character = ch, .modifiers = .{ .ctrl = true } };
-}
 
 // ---------------------------- Local Helpers-----------------------------------
 
@@ -226,57 +261,57 @@ pub const Terminal = struct {
     }
 
     fn parse(b: []const u8) Event {
-        return switch (b[0]) {
-            // direct parse
-            'a'...'z',
-            '0'...'9',
-            '\t',
-            ' ',
-            => .{ .Key = .{ .character = @enumFromInt(b[0]) } },
+        return Event{
+            .Key = switch (b[0]) {
+                // direct parse
+                'a'...'z',
+                '0'...'9',
+                '\t',
+                ' ',
+                => .{ .character = @enumFromInt(b[0]) },
 
-            'A'...'Z' => .{
-                .Key = .{
+                'A'...'Z' => .{
                     .character = @enumFromInt(b[0]),
                     // .modifiers = .{ .shft = true },
                 },
-            },
 
-            '\r', '\n' => .{ .Key = .{ .character = .Return } },
+                '\r', '\n' => .{ .character = .Return },
 
-            ctrl('a')...ctrl('h'), // '\t' = ctrl('i'), '\n' = ctrl('j')
-            ctrl('k')...ctrl('l'), // '\r' = ctrl('m')
-            ctrl('n')...ctrl('z'),
-            => .{ .Key = KeyEvent{
-                .modifiers = KeyModifiers.CTRL,
-                .character = @enumFromInt('a' + b[0] - 1),
-            } },
-            // '/' => {},
-            '\x1B' => blk: {
-                if (b.len < 2) break :blk .{ .Key = .{ .character = .Esc } };
-                switch (b[1]) {
-                    '[' => {
-                        // TODO: parse_csi,
-                        break :blk .Unknown;
-                    },
-                    else => {
-                        // repeat the parser and add the alt modifier
-                        var ev = parse(b[1..]); // todo: if this returns an error then just return Esc from this block
+                ctrl('a')...ctrl('h'), // '\t' = ctrl('i'), '\n' = ctrl('j')
+                ctrl('k')...ctrl('l'), // '\r' = ctrl('m')
+                ctrl('n')...ctrl('z'),
+                => KeyEvent{
+                    .modifiers = KeyModifiers.CTRL,
+                    .character = @enumFromInt('a' + b[0] - 1),
+                },
+                // '/' => {},
+                '\x1B' => blk: {
+                    if (b.len < 2) break :blk .{ .character = .Esc };
+                    switch (b[1]) {
+                        '[' => {
+                            // TODO: parse_csi,
+                            return .Unknown;
+                        },
+                        else => {
+                            // repeat the parser and add the alt modifier
+                            var ev = parse(b[1..]); // todo: if this returns an error then just return Esc from this block
 
-                        switch (ev) {
-                            .Key => ev.Key.modifiers.altr = true,
-                            else => {},
-                        }
+                            switch (ev) {
+                                .Key => |*key| key.modifiers.altr = true,
+                                else => {},
+                            }
 
-                        break :blk ev;
-                    },
-                }
-            },
-            0 => .End,
-            else => blk: {
-                // Some utf8 character I dont understand. The terminal should
-                // send the whole character in one read if possible so by just
-                // discarding the buffer the properly deals with it
-                break :blk .Unknown;
+                            return ev;
+                        },
+                    }
+                },
+                0 => return .End,
+                else => {
+                    // Some utf8 character I dont understand. The terminal should
+                    // send the whole character in one read if possible so by just
+                    // discarding the buffer the properly deals with it
+                    return .Unknown;
+                },
             },
         };
     }

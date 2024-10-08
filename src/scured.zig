@@ -10,59 +10,147 @@ const trm = thermit;
 
 /// Adapted from ratatui
 const Color = union(enum) {
-    /// Resets the foreground or background color
+    /// Resets the terminal color.
     Reset,
-    /// ANSI Color: Black. Foreground: 30, Background: 40
+
+    /// Black color.
     Black,
-    /// ANSI Color: Red. Foreground: 31, Background: 41
+
+    /// Dark grey color.
+    DarkGrey,
+
+    /// Light red color.
     Red,
-    /// ANSI Color: Green. Foreground: 32, Background: 42
+
+    /// Dark red color.
+    DarkRed,
+
+    /// Light green color.
     Green,
-    /// ANSI Color: Yellow. Foreground: 33, Background: 43
+
+    /// Dark green color.
+    DarkGreen,
+
+    /// Light yellow color.
     Yellow,
-    /// ANSI Color: Blue. Foreground: 34, Background: 44
+
+    /// Dark yellow color.
+    DarkYellow,
+
+    /// Light blue color.
     Blue,
-    /// ANSI Color: Magenta. Foreground: 35, Background: 45
+
+    /// Dark blue color.
+    DarkBlue,
+
+    /// Light magenta color.
     Magenta,
-    /// ANSI Color: Cyan. Foreground: 36, Background: 46
+
+    /// Dark magenta color.
+    DarkMagenta,
+
+    /// Light cyan color.
     Cyan,
-    /// ANSI Color: White. Foreground: 37, Background: 47
-    ///
-    /// Note that this is sometimes called `silver` or `white` but we use `white` for bright white
-    Gray,
-    /// ANSI Color: Bright Black. Foreground: 90, Background: 100
-    ///
-    /// Note that this is sometimes called `light black` or `bright black` but we use `dark gray`
-    DarkGray,
-    /// ANSI Color: Bright Red. Foreground: 91, Background: 101
-    LightRed,
-    /// ANSI Color: Bright Green. Foreground: 92, Background: 102
-    LightGreen,
-    /// ANSI Color: Bright Yellow. Foreground: 93, Background: 103
-    LightYellow,
-    /// ANSI Color: Bright Blue. Foreground: 94, Background: 104
-    LightBlue,
-    /// ANSI Color: Bright Magenta. Foreground: 95, Background: 105
-    LightMagenta,
-    /// ANSI Color: Bright Cyan. Foreground: 96, Background: 106
-    LightCyan,
-    /// ANSI Color: Bright White. Foreground: 97, Background: 107
-    /// Sometimes called `bright white` or `light white` in some terminals
+
+    /// Dark cyan color.
+    DarkCyan,
+
+    /// White color.
     White,
-    /// An RGB color.
+
+    /// Grey color.
+    Grey,
+
+    /// An RGB color. See [RGB color model](https://en.wikipedia.org/wiki/RGB_color_model) for more info.
     ///
-    /// Note that only terminals that support 24-bit true color will display this correctly.
-    /// Notably versions of Windows Terminal prior to Windows 10 and macOS Terminal.app do not
-    /// support this.
+    /// Most UNIX terminals and Windows 10 supported only.
+    /// See [Platform-specific notes](enum.Color.html#platform-specific-notes) for more info.
     Rgb: struct { u8, u8, u8 },
-    /// An 8-bit 256 color.
+
+    /// An ANSI color. See [256 colors - cheat sheet](https://jonasjacek.github.io/colors/) for more info.
     ///
-    /// See also <https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit>
-    Indexed: u8,
+    /// Most UNIX terminals and Windows 10 supported only.
+    /// See [Platform-specific notes](enum.Color.html#platform-specific-notes) for more info.
+    AnsiValue: u8,
+
+    const ColorType = enum {
+        Foreground,
+        Background,
+        Underline,
+
+        fn indicator(self: ColorType) u8 {
+            return switch (self) {
+                .Foreground => 38,
+                .Background => 48,
+                .Underline => 58,
+            };
+        }
+    };
+
+    // fn escColor(comptime n: u8, ctype: ColorType) []const u8 {
+    //     _ = n; // autofix
+    //     _ = ctype; // autofix
+    //
+    // set color -        esc code   set bg     color11   color cmd
+    //     return "\x1B[" ++ "48;" ++ "5;11" ++ "m";
+    // }
+
+    pub fn writeSequence(self: Color, wr: std.io.AnyWriter, ctype: ColorType) !void {
+        // fg = 38; color | reset = 39
+        // bg = 48; color | reset = 49
+        // ul = 58; color | reset = 59
+        //
+        // colors:
+        // - 5;[1-15]
+        // user defined colors
+        // - 2;{r};{g};{b}
+
+        try wr.writeAll("\x1B[");
+
+        if (self == .Reset) {
+            try std.fmt.format(wr, "{}", .{ctype.indicator() + 1});
+        } else {
+            try std.fmt.format(wr, "{};", .{ctype.indicator()});
+            const color = switch (self) {
+                .Black => "5;0",
+                .DarkGrey => "5;8",
+                .Red => "5;9",
+                .DarkRed => "5;1",
+                .Green => "5;10",
+                .DarkGreen => "5;2",
+                .Yellow => "5;11",
+                .DarkYellow => "5;3",
+                .Blue => "5;12",
+                .DarkBlue => "5;4",
+                .Magenta => "5;13",
+                .DarkMagenta => "5;5",
+                .Cyan => "5;14",
+                .DarkCyan => "5;6",
+                .White => "5;15",
+                .Grey => "5;7",
+                // Color::Rgb { r, g, b } => write!(f, "2;{r};{g};{b}"),
+                .Rgb => @panic("todo"),
+                .AnsiValue => @panic("todo"), // 5;{n}
+                .Reset => unreachable,
+            };
+            try wr.writeAll(color);
+        }
+
+        try wr.writeAll("m");
+
+        // try writer.writeAll("\x1B[" ++ "48;" ++ "5;11" ++ "m");
+        //
+        // // reset color -      esc code  reset bg  color cmd
+        // try writer.writeAll("\x1B[" ++ "49" ++ "m");
+    }
 };
 
 comptime {
     std.debug.assert(@sizeOf(Color) == @sizeOf(u32));
+
+    // var color: Color = undefined;
+    // @memset(std.mem.asBytes(&color), 0);
+    // std.debug.assert(color == .Reset);
 }
 
 const Modifier = packed struct(u8) {
@@ -85,8 +173,6 @@ const Cell = struct {
     /// Zeroed value is to not render the cell, this allows the array to just
     /// be memset to zero to reset frame buffer
     render: bool = false,
-    // x: u16,
-    // y: u16,
 
     pub inline fn setSymbol(self: *Cell, char: u21) void {
         self.symbol = char;
@@ -124,11 +210,23 @@ pub const Term = struct {
     pub fn getCell(self: Term, x: u16, y: u16) ?*Cell {
         const i = (y * self.size[0]) + x;
         if (i >= self.buffer.len) return null;
+
         const ptr = &self.buffer[i];
         ptr.render = true;
-        // ptr.x = x;
-        // ptr.y = y;
+
+        // HACK: zeroing color is bad for many reasons, this however fixes the problem kinda
+        ptr.fg = .Reset;
+        ptr.bg = .Reset;
         return ptr;
+    }
+
+    pub fn getScreenCell(self: Term, screen: Screen, x: u16, y: u16) ?*Cell {
+        std.debug.assert(screen.x <= self.size[0]);
+        std.debug.assert(screen.y <= self.size[1]);
+        std.debug.assert(x <= screen.w);
+        std.debug.assert(y <= screen.h);
+
+        return self.getCell(screen.x + x, screen.y + y);
     }
 
     pub const Screen = packed struct(u64) { x: u16, y: u16, w: u16, h: u16 };
@@ -144,24 +242,22 @@ pub const Term = struct {
         };
     }
 
-    pub fn draw(self: *Term, screen: Screen, row: u16, col: u16, data: []const u8) !void {
-        std.debug.assert(screen.x <= self.size[0]);
-        std.debug.assert(screen.y <= self.size[1]);
-        std.debug.assert(row <= screen.h);
-        std.debug.assert(col <= screen.w);
+    pub fn writeBuffer(self: Term, screen: Screen, x: u16, y: u16, buffer: []const u8) void {
+        var col: u16 = x;
+        for (buffer) |ch| {
+            if (!(col < screen.w)) return;
 
-        var i: u16 = 0;
+            const cell = self.getScreenCell(screen, col, y) orelse return;
+            cell.setSymbol(ch);
 
-        var utf8 = (try std.unicode.Utf8View.init(data)).iterator();
-        while (utf8.nextCodepoint()) |c| {
-            if (i >= screen.w) break;
-
-            const cell = self.getCell(screen.x + col + i, screen.y + row) orelse return;
-            cell.setSymbol(c);
-
-            i += 1;
+            col += 1;
         }
     }
+
+    pub const draw = @compileError(
+        \\Function `draw` is depricated, consider using `getScreenCell` in a
+        \\loop or `writeBuffer` if that is what you really need
+    );
 
     pub fn start(self: *Term, resize: bool) !void {
         if (resize) {
@@ -179,8 +275,8 @@ pub const Term = struct {
 
         // try term.clear(wr, .All);
 
-        // var fg = Color.Reset;
-        // var bg = Color.Reset;
+        var fg = Color.Reset;
+        var bg = Color.Reset;
         // var modifier = Modifier{};
 
         var pos: [2]u16 = .{ std.math.maxInt(u16) - 1, std.math.maxInt(u16) - 1 };
@@ -200,7 +296,16 @@ pub const Term = struct {
             pos = .{ x, y };
 
             // TODO: check modifier is same and change update if not
-            // TODO: "   " colors   "                              "
+
+            if (cell.fg != fg) {
+                try cell.fg.writeSequence(wr.any(), .Foreground);
+                fg = cell.fg;
+            }
+
+            if (cell.bg != bg) {
+                try cell.bg.writeSequence(wr.any(), .Background);
+                bg = cell.bg;
+            }
 
             var codepoint: [4]u8 = undefined;
             const s = try std.unicode.utf8Encode(cell.symbol, &codepoint);
@@ -244,6 +349,16 @@ pub const log = struct {
         return logOutputFile;
     }
 
+    fn levelToText(level: std.log.Level) []const u8 {
+        return switch (level) {
+            .err => "ERROR",
+            .warn => "WARN",
+            .info => "INFO",
+            .debug => "DEBUG",
+            // else => "UNKNOWN",
+        };
+    }
+
     pub fn toFile(
         comptime message_level: std.log.Level,
         comptime scope: @TypeOf(.enum_literal),
@@ -252,7 +367,8 @@ pub const log = struct {
     ) void {
         _ = scope;
         if (logOutputFile) |f| {
-            const fmt = comptime message_level.asText() ++ ": " ++ format;
+            const level = comptime levelToText(message_level);
+            const fmt = level ++ ": " ++ format;
             std.fmt.format(f.writer(), fmt, args) catch {};
         }
     }

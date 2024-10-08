@@ -53,28 +53,33 @@ const sidebarW = 5;
 
 fn fullRedraw(term: *scu.Term, start: i64) !void {
     // line numbers
-    const leftside = .{
-        .x = 0,
-        .y = 0,
-        .w = sidebarW,
-        .h = term.size[1] - statbarH,
-    };
+    const leftside = term.makeScreen(0, 0, sidebarW, term.size[1] - statbarH);
 
-    for (0..leftside.h) |r| {
+    var r: u16 = 0;
+    while (r < leftside.h) : (r += 1) {
         var buf: [4]u8 = .{ ' ', ' ', ' ', '|' };
         const out = try std.fmt.bufPrint(&buf, "{}", .{r});
         std.debug.assert(out.len < 3);
-        try term.draw(leftside, @intCast(r), 1, &buf);
+
+        var c: u16 = 1;
+        for (buf) |ch| {
+            term.getScreenCell(leftside, c, r).?.setSymbol(ch);
+            c += 1;
+        }
     }
 
     const statusbar = term.makeScreen(0, term.size[1] - statbarH, null, statbarH);
 
-    var buf: [256]u8 = undefined;
-    @memset(&buf, '>');
-    try term.draw(statusbar, 0, 0, &buf);
+    var c: u16 = 0;
+    while (c < statusbar.w) : (c += 1) {
+        const cell = term.getScreenCell(statusbar, c, 0) orelse break;
+        cell.setSymbol('>');
+        cell.fg = .Red;
+        cell.bg = .Blue;
+    }
 
-    try term.draw(statusbar, 1, 3, "footer text");
-    try term.draw(statusbar, 2, 6, "animation example");
+    term.writeBuffer(statusbar, 3, 1, "footer text");
+    term.writeBuffer(statusbar, 6, 2, "animation example");
 
     try screenRedraw(term, start);
 }
@@ -85,17 +90,19 @@ fn screenRedraw(term: *scu.Term, start: i64) !void {
     const now = std.time.milliTimestamp();
     const diff: f64 = @floatFromInt(now - start);
 
-    for (0..mainscreen.h) |r| {
-        var buf: [256]u8 = undefined;
-        for (&buf, 0..) |*b, i| {
-            const d: f64 = @floatFromInt(r * 256 + i);
+    var r: u16 = 0;
+    while (r < mainscreen.h) : (r += 1) {
+        var c: u16 = 0;
+        while (c < mainscreen.w) : (c += 1) {
+            const cell = term.getScreenCell(mainscreen, c, r) orelse break;
+
+            const d: f64 = @floatFromInt(r * 256 + c);
             const d2 = std.math.pow(f64, 1.01, d);
             const cd = @cos(d2);
             const sd = @sin(diff);
             const l = cd + sd;
-            b.* = if (l < 0.2) ' ' else if (l < 1.0) '.' else '0';
+            const b: u21 = if (l < 0.2) ' ' else if (l < 1.0) '.' else '0';
+            cell.setSymbol(b);
         }
-        const row: u16 = @intCast(r);
-        try term.draw(mainscreen, row, 0, &buf);
     }
 }
