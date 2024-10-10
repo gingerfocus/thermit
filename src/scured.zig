@@ -176,7 +176,7 @@ pub const Term = struct {
 
         const size = try trm.getWindowSize(fd);
 
-        const buffer = try a.alloc(Cell, size[0] * size[1]);
+        const buffer = try a.alloc(Cell, size.x * size.y);
 
         return .{
             .tty = tty,
@@ -207,13 +207,13 @@ pub const Term = struct {
         return .{
             .x = x,
             .y = y,
-            .w = w orelse self.size[0] - x,
-            .h = h orelse self.size[1] - y,
+            .w = w orelse self.size.x - x,
+            .h = h orelse self.size.y - y,
         };
     }
 
     pub fn getCell(self: Term, x: u16, y: u16) ?*Cell {
-        const i = (y * self.size[0]) + x;
+        const i = (y * self.size.x) + x;
         if (i >= self.buffer.len) return null;
 
         const ptr = &self.buffer[i];
@@ -226,8 +226,8 @@ pub const Term = struct {
     }
 
     pub fn getScreenCell(self: Term, screen: Screen, x: u16, y: u16) ?*Cell {
-        std.debug.assert(screen.x <= self.size[0]);
-        std.debug.assert(screen.y <= self.size[1]);
+        std.debug.assert(screen.x <= self.size.x);
+        std.debug.assert(screen.y <= self.size.y);
         std.debug.assert(x <= screen.w);
         std.debug.assert(y <= screen.h);
 
@@ -246,8 +246,8 @@ pub const Term = struct {
         }
     }
 
-    pub fn moveCursor(self: Term, screen: Screen, x: u16, y: u16) void {
-        self.size = .{ screen.x + x, screen.y + y };
+    pub fn moveCursor(self: *Term, screen: Screen, x: u16, y: u16) void {
+        self.cursor = .{ .x = screen.x + x, .y = screen.y + y };
     }
 
     pub const draw = @compileError(
@@ -258,7 +258,7 @@ pub const Term = struct {
     pub fn start(self: *Term, resize: bool) !void {
         if (resize) {
             self.size = try trm.getWindowSize(self.tty.f.handle);
-            self.buffer = try self.a.realloc(self.buffer, self.size[0] * self.size[1]);
+            self.buffer = try self.a.realloc(self.buffer, self.size.x * self.size.y);
         }
         @memset(std.mem.asBytes(self.buffer), 0);
     }
@@ -276,19 +276,21 @@ pub const Term = struct {
         var bg = Color.Reset;
         // var modifier = Modifier{};
 
-        var pos: [2]u16 = .{ std.math.maxInt(u16) - 1, std.math.maxInt(u16) - 1 };
+        // -1 so that when adding later it doesnt overflow
+        var pos: trm.Size = .{ .x = std.math.maxInt(u16) - 1, .y = std.math.maxInt(u16) - 1 };
+
         var i: u16 = 0;
         for (self.buffer) |cell| {
             defer i += 1;
             if (!cell.render) continue;
 
-            const y: u16 = i / self.size[0];
-            const x: u16 = i % self.size[0];
+            const x: u16 = i % self.size.x;
+            const y: u16 = i / self.size.x;
 
-            if (pos[0] + 1 != x or pos[1] != y) {
+            if (pos.x + 1 != x or pos.y != y) {
                 try trm.moveTo(wr, x, y);
             }
-            pos = .{ x, y };
+            pos = .{ .x = x, .y = y };
 
             // TODO: check modifier is same and change update if not
 
@@ -309,7 +311,7 @@ pub const Term = struct {
         // TODO: reset all color and attris at end
 
         if (self.cursor) |loc| {
-            try trm.moveTo(wr, loc[0], loc[1]);
+            try trm.moveTo(wr, loc.y, loc.y);
             try trm.cursorShow(wr);
         } // else keep cursor hidden
 

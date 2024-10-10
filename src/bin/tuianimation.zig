@@ -21,11 +21,10 @@ pub fn main() !void {
 
     const start = std.time.milliTimestamp();
 
-    try trm.cursorHide(term.tty.f.writer());
-    defer trm.cursorShow(term.tty.f.writer()) catch {};
+    try term.start(true);
 
-    try term.start(false);
     try fullRedraw(&term, start);
+
     try term.finish();
 
     while (true) {
@@ -33,14 +32,17 @@ pub fn main() !void {
 
         var full = false;
         switch (ev) {
-            .Key => |ke| if (ke.character.b() == 'q') break,
+            .Key => |ke| if (trm.keys.bits(ke) == 'q') break,
             .Resize => full = true,
             else => {},
         }
 
         try term.start(full);
 
-        if (full) try fullRedraw(&term, start) else try screenRedraw(&term, start);
+        if (full)
+            try fullRedraw(&term, start)
+        else
+            try screenRedraw(&term, start);
 
         try term.finish();
     }
@@ -50,9 +52,10 @@ const statbarH = 3;
 const sidebarW = 5;
 
 fn fullRedraw(term: *scu.Term, start: i64) !void {
-    // line numbers
-    const leftside = term.makeScreen(0, 0, sidebarW, term.size[1] - statbarH);
+    const leftside = term.makeScreen(0, 0, sidebarW, term.size.y - statbarH);
+    const statusbar = term.makeScreen(0, term.size.y - statbarH, null, statbarH);
 
+    // ---------- Line Numbers ------------------------------------------------
     var r: u16 = 0;
     while (r < leftside.h) : (r += 1) {
         var buf: [4]u8 = .{ ' ', ' ', ' ', '|' };
@@ -65,9 +68,10 @@ fn fullRedraw(term: *scu.Term, start: i64) !void {
             c += 1;
         }
     }
-
-    const statusbar = term.makeScreen(0, term.size[1] - statbarH, null, statbarH);
-
+    // ------------------------------------------------------------------------
+    //
+    //
+    // ---------- Status Bar --------------------------------------------------
     var c: u16 = 0;
     while (c < statusbar.w) : (c += 1) {
         const cell = term.getScreenCell(statusbar, c, 0) orelse break;
@@ -78,15 +82,19 @@ fn fullRedraw(term: *scu.Term, start: i64) !void {
 
     term.writeBuffer(statusbar, 3, 1, "footer text");
     term.writeBuffer(statusbar, 6, 2, "animation example");
+    // ------------------------------------------------------------------------
 
     try screenRedraw(term, start);
 }
 
 fn screenRedraw(term: *scu.Term, start: i64) !void {
-    const mainscreen = term.makeScreen(sidebarW, 0, null, term.size[1] - statbarH);
+    const mainscreen = term.makeScreen(sidebarW, 0, null, term.size.y - statbarH);
 
     const now = std.time.milliTimestamp();
     const diff: f64 = @floatFromInt(now - start);
+
+    // just ttest this thing idc
+    term.moveCursor(mainscreen, 0, 0);
 
     var r: u16 = 0;
     while (r < mainscreen.h) : (r += 1) {

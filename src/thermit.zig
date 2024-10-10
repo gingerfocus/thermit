@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const Event = union(enum) {
     Key: KeyEvent,
-    Resize: struct { u16, u16 },
+    Resize: Size,
     Timeout,
     End,
     Unknown,
@@ -368,7 +368,7 @@ pub const Terminal = struct {
     }
 };
 
-pub const Size = struct { u16, u16 };
+pub const Size = struct { x: u16, y: u16 };
 
 pub fn getWindowSize(fd: std.posix.fd_t) !Size {
     var win = std.mem.zeroes(std.posix.winsize);
@@ -376,7 +376,7 @@ pub fn getWindowSize(fd: std.posix.fd_t) !Size {
     if (std.posix.system.ioctl(fd, std.posix.T.IOCGWINSZ, @intFromPtr(&win)) != 0) {
         return error.bad_ioctl;
     }
-    return .{ win.ws_col, win.ws_row };
+    return .{ .x = win.ws_col, .y = win.ws_row };
 }
 
 pub fn csi(comptime expr: []const u8) []const u8 {
