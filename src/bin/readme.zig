@@ -1,11 +1,11 @@
-const scinee = @import("scinee");
 const std = @import("std");
+const scu = @import("scured");
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
     // ------------------- Begin Example ----------------------------------
-    var term = try scinee.Term.init(allocator);
+    var term = try scu.Term.init(allocator);
     defer term.deinit();
 
     try term.start(false); // clears the render buffer

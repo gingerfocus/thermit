@@ -1,5 +1,5 @@
 const std = @import("std");
-const scu = @import("scinee");
+const scu = @import("scured");
 
 const trm = scu.thermit;
 
@@ -44,8 +44,6 @@ pub fn main() !void {
 
         try term.finish();
     }
-
-    // std.time.sleep(std.time.ns_per_s * 3);
 }
 
 const statbarH = 3;

@@ -12,61 +12,43 @@ const trm = thermit;
 const Color = union(enum) {
     /// Resets the terminal color.
     Reset,
-
     /// Black color.
     Black,
-
     /// Dark grey color.
     DarkGrey,
-
     /// Light red color.
     Red,
-
     /// Dark red color.
     DarkRed,
-
     /// Light green color.
     Green,
-
     /// Dark green color.
     DarkGreen,
-
     /// Light yellow color.
     Yellow,
-
     /// Dark yellow color.
     DarkYellow,
-
     /// Light blue color.
     Blue,
-
     /// Dark blue color.
     DarkBlue,
-
     /// Light magenta color.
     Magenta,
-
     /// Dark magenta color.
     DarkMagenta,
-
     /// Light cyan color.
     Cyan,
-
     /// Dark cyan color.
     DarkCyan,
-
     /// White color.
     White,
-
     /// Grey color.
     Grey,
-
     /// An RGB color. See [RGB color model](https://en.wikipedia.org/wiki/RGB_color_model) for more info.
     ///
     /// Most UNIX terminals and Windows 10 supported only.
     /// See [Platform-specific notes](enum.Color.html#platform-specific-notes) for more info.
     Rgb: struct { u8, u8, u8 },
-
     /// An ANSI color. See [256 colors - cheat sheet](https://jonasjacek.github.io/colors/) for more info.
     ///
     /// Most UNIX terminals and Windows 10 supported only.
@@ -87,14 +69,6 @@ const Color = union(enum) {
         }
     };
 
-    // fn escColor(comptime n: u8, ctype: ColorType) []const u8 {
-    //     _ = n; // autofix
-    //     _ = ctype; // autofix
-    //
-    // set color -        esc code   set bg     color11   color cmd
-    //     return "\x1B[" ++ "48;" ++ "5;11" ++ "m";
-    // }
-
     pub fn writeSequence(self: Color, wr: std.io.AnyWriter, ctype: ColorType) !void {
         // fg = 38; color | reset = 39
         // bg = 48; color | reset = 49
@@ -104,6 +78,14 @@ const Color = union(enum) {
         // - 5;[1-15]
         // user defined colors
         // - 2;{r};{g};{b}
+
+        // set color -        esc code   set bg     color11   color cmd
+        //     return "\x1B[" ++ "48;" ++ "5;11" ++ "m";
+
+        // try writer.writeAll("\x1B[" ++ "48;" ++ "5;11" ++ "m");
+        //
+        // // reset color -      esc code  reset bg  color cmd
+        // try writer.writeAll("\x1B[" ++ "49" ++ "m");
 
         try wr.writeAll("\x1B[");
 
@@ -137,11 +119,6 @@ const Color = union(enum) {
         }
 
         try wr.writeAll("m");
-
-        // try writer.writeAll("\x1B[" ++ "48;" ++ "5;11" ++ "m");
-        //
-        // // reset color -      esc code  reset bg  color cmd
-        // try writer.writeAll("\x1B[" ++ "49" ++ "m");
     }
 };
 
@@ -184,6 +161,8 @@ pub const Term = struct {
     buffer: []Cell,
     size: trm.Size,
 
+    cursor: ?trm.Size = null,
+
     a: std.mem.Allocator,
 
     pub fn init(a: std.mem.Allocator) !Term {
@@ -204,6 +183,32 @@ pub const Term = struct {
             .buffer = buffer,
             .size = size,
             .a = a,
+        };
+    }
+
+    pub fn deinit(self: *Term) void {
+        const wr = self.tty.f.writer();
+        trm.cursorShow(wr) catch {};
+
+        self.tty.disableRawMode() catch {};
+        trm.leaveAlternateScreen(wr) catch {};
+
+        self.tty.f.close();
+        self.tty.deinit();
+
+        self.a.free(self.buffer);
+    }
+
+    pub const Screen = packed struct(u64) { x: u16, y: u16, w: u16, h: u16 };
+
+    /// Creates a screen at the given position, if width or height is null then
+    /// it extends to the end of the screen
+    pub fn makeScreen(self: Term, x: u16, y: u16, w: ?u16, h: ?u16) Screen {
+        return .{
+            .x = x,
+            .y = y,
+            .w = w orelse self.size[0] - x,
+            .h = h orelse self.size[1] - y,
         };
     }
 
@@ -229,19 +234,6 @@ pub const Term = struct {
         return self.getCell(screen.x + x, screen.y + y);
     }
 
-    pub const Screen = packed struct(u64) { x: u16, y: u16, w: u16, h: u16 };
-
-    /// Creates a screen at the given position, if width or height is null then
-    /// it extends to the end of the screen
-    pub fn makeScreen(self: Term, x: u16, y: u16, w: ?u16, h: ?u16) Screen {
-        return .{
-            .x = x,
-            .y = y,
-            .w = w orelse self.size[0] - x,
-            .h = h orelse self.size[1] - y,
-        };
-    }
-
     pub fn writeBuffer(self: Term, screen: Screen, x: u16, y: u16, buffer: []const u8) void {
         var col: u16 = x;
         for (buffer) |ch| {
@@ -252,6 +244,10 @@ pub const Term = struct {
 
             col += 1;
         }
+    }
+
+    pub fn moveCursor(self: Term, screen: Screen, x: u16, y: u16) void {
+        self.size = .{ screen.x + x, screen.y + y };
     }
 
     pub const draw = @compileError(
@@ -273,6 +269,7 @@ pub const Term = struct {
         defer buf.deinit();
         const wr = buf.writer();
 
+        try trm.cursorHide(wr);
         // try term.clear(wr, .All);
 
         var fg = Color.Reset;
@@ -288,9 +285,7 @@ pub const Term = struct {
             const y: u16 = i / self.size[0];
             const x: u16 = i % self.size[0];
 
-            if (pos[0] + 1 == x and pos[1] == y) {
-                // std.log.info("skiped a move command", .{});
-            } else {
+            if (pos[0] + 1 != x or pos[1] != y) {
                 try trm.moveTo(wr, x, y);
             }
             pos = .{ x, y };
@@ -313,24 +308,16 @@ pub const Term = struct {
         }
         // TODO: reset all color and attris at end
 
+        if (self.cursor) |loc| {
+            try trm.moveTo(wr, loc[0], loc[1]);
+            try trm.cursorShow(wr);
+        } // else keep cursor hidden
+
         // write buffer to terminal
         try self.tty.f.writeAll(buf.items);
 
         // let the terminal deal with all the shit we just wrote
         try std.posix.syncfs(self.tty.f.handle);
-    }
-
-    pub fn deinit(self: *Term) void {
-        const wr = self.tty.f.writer();
-        trm.cursorShow(wr) catch {};
-
-        self.tty.disableRawMode() catch {};
-        trm.leaveAlternateScreen(wr) catch {};
-
-        self.tty.f.close();
-        self.tty.deinit();
-
-        self.a.free(self.buffer);
     }
 };
 
@@ -368,7 +355,7 @@ pub const log = struct {
         _ = scope;
         if (logOutputFile) |f| {
             const level = comptime levelToText(message_level);
-            const fmt = level ++ ": " ++ format;
+            const fmt = level ++ ": " ++ format ++ "\n";
             std.fmt.format(f.writer(), fmt, args) catch {};
         }
     }

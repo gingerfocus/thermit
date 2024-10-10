@@ -22,15 +22,23 @@ pub fn build(b: *std.Build) void {
 
     // ----------------------------- Library -----------------------------------
 
-    const libthermit = b.addSharedLibrary(.{
+    const thermitLib = b.addSharedLibrary(.{
         .name = "thermit",
         .root_source_file = b.path("src/external.zig"),
         .optimize = .ReleaseFast,
         .target = target,
+        .version = .{ .major = 0, .minor = 1, .patch = 0 },
     });
-    libthermit.addIncludePath(b.path("src"));
+    thermitLib.root_module.addImport("thermit", thermit);
+    thermitLib.addIncludePath(b.path("src"));
 
-    const header = b.addInstallHeaderFile(b.path("src/thermit.h"), "thermit.h");
+    const libthermit = b.addInstallArtifact(thermitLib, .{});
+
+    // // HACK zig complier doesnt emit the header in the right place so just
+    // // tell it to make it and instead of using its location use the real one
+    // _ = thermitLib.getEmittedH();
+    // const header = b.addInstallHeaderFile(b.path(".zig-cache/thermit.h"), "thermit.h");
+    const header = b.addInstallHeaderFile(b.path("src/external.h"), "thermit.h");
 
     const libs = b.step("lib", "Build the library");
     libs.dependOn(&libthermit.step);
@@ -68,7 +76,7 @@ pub fn build(b: *std.Build) void {
                 exe.root_module.addImport("thermit", thermit);
             },
             .scinee => {
-                exe.root_module.addImport("scinee", scured);
+                exe.root_module.addImport("scured", scured);
             },
             else => {},
         }
