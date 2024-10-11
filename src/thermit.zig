@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const Event = union(enum) {
     Key: KeyEvent,
-    Resize: Size,
+    Resize,
     Timeout,
     End,
     Unknown,
@@ -22,76 +22,24 @@ pub const KeyModifiers = packed struct(u8) {
     pub const CTRL = KeyModifiers{ .ctrl = true };
 };
 
-pub const KeyCharacter = enum(u8) {
-    None = 0,
-    a = 'a',
-    b = 'b',
-    c = 'c',
-    d = 'd',
-    e = 'e',
-    f = 'f',
-    g = 'g',
-    h = 'h',
-    i = 'i',
-    j = 'j',
-    k = 'k',
-    l = 'l',
-    m = 'm',
-    n = 'n',
-    o = 'o',
-    p = 'p',
-    q = 'q',
-    r = 'r',
-    s = 's',
-    t = 't',
-    u = 'u',
-    v = 'v',
-    w = 'w',
-    x = 'x',
-    y = 'y',
-    z = 'z',
-    A = 'A',
-    B = 'B',
-    C = 'C',
-    D = 'D',
-    E = 'E',
-    F = 'F',
-    G = 'G',
-    H = 'H',
-    I = 'I',
-    J = 'J',
-    K = 'K',
-    L = 'L',
-    M = 'M',
-    N = 'N',
-    O = 'O',
-    P = 'P',
-    Q = 'Q',
-    R = 'R',
-    S = 'S',
-    T = 'T',
-    U = 'U',
-    V = 'V',
-    W = 'W',
-    X = 'X',
-    Y = 'Y',
-    Z = 'Z',
-    N0 = '0',
-    N1 = '1',
-    N2 = '2',
-    N3 = '3',
-    N4 = '4',
-    N5 = '5',
-    N6 = '6',
-    N7 = '7',
-    N8 = '8',
-    N9 = '9',
-    Return = '\n',
-    Space = ' ',
-    Esc,
-    Backspace,
+pub const KeyCharacter = u8;
 
-    pub fn b(self: KeyCharacter) u8 {
+// https://www.ascii-code.com/
+pub const KeySymbol = enum(u8) {
+    None = 0,
+    // 1...7 - UNUSED
+    Backspace = 8,
+    Tab = '\t', // 9
+    Return = '\n', // 10, \r = 13
+    // 11...26 - UNUSED
+    Esc = 27,
+    /// 28...31 - UNUSED
+    Space = ' ', // 32
+    // 33...126 - printable data
+    // 127 - DEL
+    // 128...255 - UNUSED
+
+    pub fn toBits(self: KeySymbol) KeyCharacter {
         return @intFromEnum(self);
     }
 };
@@ -117,11 +65,11 @@ pub const KeyCharacter = enum(u8) {
 /// }
 /// ```
 pub const keys = struct {
-    pub inline fn norm(c: KeyCharacter) u16 {
+    pub inline fn norm(c: u8) u16 {
         return @bitCast(KeyEvent{ .character = c });
     }
 
-    pub inline fn ctrl(c: KeyCharacter) u16 {
+    pub inline fn ctrl(c: u8) u16 {
         const keyev = KeyEvent{
             .character = c,
             .modifiers = .{ .ctrl = true },
@@ -129,7 +77,7 @@ pub const keys = struct {
         return @bitCast(keyev);
     }
 
-    pub inline fn altr(c: KeyCharacter) u16 {
+    pub inline fn altr(c: u8) u16 {
         const keyev = KeyEvent{
             .character = c,
             .modifiers = .{ .altr = true },
@@ -143,7 +91,7 @@ pub const keys = struct {
 };
 
 pub const KeyEvent = packed struct(u16) {
-    character: KeyCharacter = .None,
+    character: KeyCharacter = KeySymbol.None.toBits(),
     modifiers: KeyModifiers = .{},
 
     // pub fn eql(lhs: KeyEvent, rhs: KeyEvent) bool { }
@@ -246,7 +194,7 @@ pub const Terminal = struct {
 
             self.pollfds[1].revents = 0; // reset
 
-            return .{ .Resize = try getWindowSize(self.pollfds[0].fd) };
+            return .{ .Resize = {} };
         }
 
         std.debug.assert(self.pollfds[0].revents == std.posix.POLL.IN);
@@ -261,32 +209,42 @@ pub const Terminal = struct {
     }
 
     fn parse(b: []const u8) Event {
+        const Parse = struct {
+            fn toCtrl(c: u8) KeyEvent {
+                return KeyEvent{
+                    .modifiers = KeyModifiers.CTRL,
+                    .character = 'a' + c - 1,
+                };
+            }
+        };
+
         return Event{
             .Key = switch (b[0]) {
-                // direct parse
-                'a'...'z',
-                '0'...'9',
-                '\t',
-                ' ',
-                => .{ .character = @enumFromInt(b[0]) },
+                0 => return .End,
 
-                'A'...'Z' => .{
-                    .character = @enumFromInt(b[0]),
-                    // .modifiers = .{ .shft = true },
-                },
+                ctrl('a')...ctrl('g'), // 1...7
+                => Parse.toCtrl(b[0]),
 
-                '\r', '\n' => .{ .character = .Return },
+                8 => .{ .character = KeySymbol.Backspace.toBits() },
 
-                ctrl('a')...ctrl('h'), // '\t' = ctrl('i'), '\n' = ctrl('j')
-                ctrl('k')...ctrl('l'), // '\r' = ctrl('m')
-                ctrl('n')...ctrl('z'),
-                => KeyEvent{
-                    .modifiers = KeyModifiers.CTRL,
-                    .character = @enumFromInt('a' + b[0] - 1),
-                },
-                // '/' => {},
-                '\x1B' => blk: {
-                    if (b.len < 2) break :blk .{ .character = .Esc };
+                '\t', // 9
+                => .{ .character = KeySymbol.Tab.toBits() },
+
+                '\n', // 10
+                => .{ .character = KeySymbol.Return.toBits() },
+
+                ctrl('k'), // 11
+                ctrl('l'), // 12
+                => Parse.toCtrl(b[0]),
+
+                '\r', // 13
+                => .{ .character = KeySymbol.Return.toBits() },
+
+                ctrl('n')...ctrl('z'), // 14..26
+                => Parse.toCtrl(b[0]),
+
+                '\x1B' => blk: { // 27
+                    if (b.len < 2) break :blk .{ .character = KeySymbol.Esc.toBits() };
                     switch (b[1]) {
                         '[' => {
                             // TODO: parse_csi,
@@ -300,16 +258,21 @@ pub const Terminal = struct {
                                 .Key => |*key| key.modifiers.altr = true,
                                 else => {},
                             }
-
                             return ev;
                         },
                     }
                 },
-                0 => return .End,
-                else => {
-                    // Some utf8 character I dont understand. The terminal should
-                    // send the whole character in one read if possible so by just
-                    // discarding the buffer the properly deals with it
+                28...31 => {
+                    std.log.info("unknown character code: ({d})", .{b});
+                    return .Unknown;
+                },
+                ' ' => .{ .character = KeySymbol.Space.toBits() },
+                // direct parse
+                // printable data, you should be able to figure these out big boy
+                33...126 => .{ .character = b[0] },
+                127 => .{ .character = KeySymbol.Backspace.toBits() },
+                128...255 => {
+                    std.log.info("unknown character code: ({d})", .{b});
                     return .Unknown;
                 },
             },

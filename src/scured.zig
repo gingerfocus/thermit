@@ -270,7 +270,7 @@ pub const Term = struct {
         const wr = buf.writer();
 
         try trm.cursorHide(wr);
-        // try term.clear(wr, .All);
+        // try trm.clear(wr, .All);
 
         var fg = Color.Reset;
         var bg = Color.Reset;
@@ -311,7 +311,7 @@ pub const Term = struct {
         // TODO: reset all color and attris at end
 
         if (self.cursor) |loc| {
-            try trm.moveTo(wr, loc.y, loc.y);
+            try trm.moveTo(wr, loc.x, loc.y);
             try trm.cursorShow(wr);
         } // else keep cursor hidden
 

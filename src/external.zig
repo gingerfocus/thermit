@@ -6,64 +6,44 @@ const inner = @import("thermit.zig");
 // pub const Event = inner.Event;
 // pub const KeyEvent = inner.KeyEvent;
 
-const exter = @cImport({
+const ext = @cImport({
     @cInclude("external.h");
 });
+const Event = ext.Event;
+const Terminal = ext.Terminal;
+const ThermitError = ext.ThermitError;
 
-pub const Terminal = ?*anyopaque;
+// comptime {
+//     std.debug.assert(@TypeOf(exter.terminalRead) == @TypeOf(terminalRead));
+// }
+// pub export fn terminalRead(terminal: Terminal, timeout: i32, event: [*c]Event) void {
+//     const e: *u64 = event orelse return;
+//     _ = e; // autofix
+//     const term: *inner.Terminal = @alignCast(@ptrCast(terminal.?));
+//     const ev = term.read(timeout) catch {
+//         return; // .{ .type = .Error };
+//     };
+//     _ = ev; // autofix
+//     // return .{ .type = .None };
+// }
 
-pub const ThermitError = enum(u8) {
-    None = 0,
-    Generic = 1,
-};
+// pub export fn terminalEnableRawMode(terminal: Terminal) callconv(.C) ThermitError {
+//     const term: *inner.Terminal = @alignCast(@ptrCast(terminal));
+//     term.enableRawMode() catch {
+//         return .Generic;
+//     };
+//     return .None;
+// }
 
-pub export const ThermitErrorNone: u8 = 0;
-pub export const ThermitErrorGeneric: u8 = 1;
-comptime {
-    std.debug.assert(@TypeOf(exter.terminalRead) == @TypeOf(terminalRead));
-}
-pub export fn terminalRead(terminal: Terminal, timeout: i32, event: [*c]u64) void {
-    const e: *u64 = event orelse return;
-    _ = e; // autofix
-    const term: *inner.Terminal = @alignCast(@ptrCast(terminal.?));
-    const ev = term.read(timeout) catch {
-        return; // .{ .type = .Error };
-    };
-    _ = ev; // autofix
-    // return .{ .type = .None };
-}
+// pub export fn terminalDisableRawMode(terminal: Terminal) callconv(.C) ThermitError {
+//     const term: *inner.Terminal = @alignCast(@ptrCast(terminal));
+//     term.disableRawMode() catch {
+//         return .Generic;
+//     };
+//     return .None;
+// }
 
-pub export fn terminalEnableRawMode(terminal: Terminal) callconv(.C) ThermitError {
-    const term: *inner.Terminal = @alignCast(@ptrCast(terminal));
-    term.enableRawMode() catch {
-        return .Generic;
-    };
-    return .None;
-}
-
-pub export fn terminalDisableRawMode(terminal: Terminal) callconv(.C) ThermitError {
-    const term: *inner.Terminal = @alignCast(@ptrCast(terminal));
-    term.disableRawMode() catch {
-        return .Generic;
-    };
-    return .None;
-}
-
-pub const KeyEvent = inner.KeyEvent;
-
-pub const EventType = enum(u8) { Key, Resize, None, Error };
-
-pub const Event = extern struct {
-    const BufferSize = @max(@sizeOf(KeyEvent), @sizeOf(struct { u16, u16 }));
-
-    type: EventType,
-    data: [BufferSize]u8 = std.mem.zeroes([BufferSize]u8),
-    // Key: KeyEvent,
-    // Resize: struct { u16, u16 },
-    // Timeout,
-    // End,
-    // Unknown,
-};
+// pub const KeyEvent = inner.KeyEvent;
 
 // pub fn getWindowSize(fd: std.posix.fd_t) !struct { u16, u16 } {
 //     var win = std.mem.zeroes(std.posix.winsize);
@@ -164,7 +144,7 @@ pub const Event = extern struct {
 //     try writer.writeAll(csi("?12l"));
 // }
 
-pub const CursorStyle = inner.CursorStyle;
+// pub const CursorStyle = inner.CursorStyle;
 
 // pub fn setCursorStyle(writer: anytype, style: CursorStyle) !void {
 //     try writer.writeAll(switch (style) {

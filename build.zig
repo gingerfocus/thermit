@@ -31,6 +31,7 @@ pub fn build(b: *std.Build) void {
     });
     thermitLib.root_module.addImport("thermit", thermit);
     thermitLib.addIncludePath(b.path("src"));
+    thermitLib.linkLibC();
 
     const libthermit = b.addInstallArtifact(thermitLib, .{});
 
