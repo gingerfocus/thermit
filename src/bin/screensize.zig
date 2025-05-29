@@ -1,8 +1,8 @@
-const thermit = @import("thermit");
+const thr = @import("thermit");
 const std = @import("std");
 
 pub fn main() !void {
-    var tty = try thermit.Terminal.init(std.io.getStdErr());
+    var tty = try thr.Terminal.init(std.io.getStdErr());
     defer tty.deinit();
 
     const wr = tty.f.writer();
@@ -10,12 +10,12 @@ pub fn main() !void {
     try tty.enableRawMode();
     defer tty.disableRawMode() catch unreachable;
 
-    try thermit.enterAlternateScreen(wr);
-    defer thermit.leaveAlternateScreen(wr) catch unreachable;
+    try thr.enterAlternateScreen(wr);
+    defer thr.leaveAlternateScreen(wr) catch unreachable;
 
     var renders: u16 = 0;
 
-    var sz = try thermit.getWindowSize(tty.f.handle);
+    var sz = try thr.getWindowSize(tty.f.handle);
 
     renders += 1;
     try draw(wr, sz, renders);
@@ -26,10 +26,10 @@ pub fn main() !void {
         var end = false;
 
         switch (e) {
-            .Key => |ke| end = (ke.character.b() == 'q'),
+            .Key => |key| end = (thr.keys.bits(key) == 'q'),
             .End => end = true,
-            .Resize => |size| {
-                sz = size;
+            .Resize => {
+                sz = try thr.getWindowSize(tty.f.handle);
                 drw = true;
             },
             .Timeout, .Unknown => {},
@@ -43,12 +43,12 @@ pub fn main() !void {
     }
 }
 
-pub fn draw(wr: anytype, sz: thermit.Size, renders: u16) !void {
+pub fn draw(wr: anytype, sz: thr.Size, renders: u16) !void {
     var buf = std.io.bufferedWriter(wr);
     const bufw = buf.writer();
 
-    try thermit.clear(bufw, .All);
-    try thermit.moveTo(bufw, 0, 0);
+    try thr.clear(bufw, .All);
+    try thr.moveTo(bufw, 0, 0);
 
     try std.fmt.format(bufw, "Press [q] to quit\n", .{});
     try std.fmt.format(bufw, "Renders: {}\n", .{renders});

@@ -1,6 +1,5 @@
 const std = @import("std");
 const scu = @import("scured");
-
 const trm = scu.thermit;
 
 pub const std_options: std.Options = .{
@@ -8,13 +7,15 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const a = gpa.allocator();
-
+    // see std options above on setting the log function, if you need more
+    // complex logging features just make your own nerd
     const f = try std.fs.cwd().createFile("example.log", .{});
     defer f.close();
     scu.log.setFile(f);
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const a = gpa.allocator();
 
     var term = try scu.Term.init(a);
     defer term.deinit();
@@ -90,11 +91,21 @@ fn fullRedraw(term: *scu.Term, start: i64) !void {
 fn screenRedraw(term: *scu.Term, start: i64) !void {
     const mainscreen = term.makeScreen(sidebarW, 0, null, term.size.y - statbarH);
 
-    const now = std.time.milliTimestamp();
-    const diff: f64 = @floatFromInt(now - start);
+    const cx: f32 = @floatFromInt(mainscreen.h / 2);
+    const cy: f32 = @floatFromInt(mainscreen.w / 2);
 
-    // just ttest this thing idc
-    term.moveCursor(mainscreen, 0, 0);
+    const time: f32 = @as(f32, @floatFromInt(std.time.milliTimestamp() - start));
+
+    const SPEED = 140;
+
+    const SPIN = 20.0;
+    const INN_RADIUS = 10.0;
+    const OUT_RADIUS = 17.0;
+
+    const STRETCH = 0.5;
+
+    const x = STRETCH * SPIN * @cos(@divFloor(time, SPEED)) + cx;
+    const y = SPIN * @sin(@divFloor(time, SPEED)) + cy;
 
     var r: u16 = 0;
     while (r < mainscreen.h) : (r += 1) {
@@ -102,12 +113,12 @@ fn screenRedraw(term: *scu.Term, start: i64) !void {
         while (c < mainscreen.w) : (c += 1) {
             const cell = term.getScreenCell(mainscreen, c, r) orelse break;
 
-            const d: f64 = @floatFromInt(r * 256 + c);
-            const d2 = std.math.pow(f64, 1.01, d);
-            const cd = @cos(d2);
-            const sd = @sin(diff);
-            const l = cd + sd;
-            const b: u21 = if (l < 0.2) ' ' else if (l < 1.0) '.' else '0';
+            const fc: f32 = @floatFromInt(c);
+            const fr: f32 = @floatFromInt(r);
+
+            const dist = @sqrt((fr - x) * (fr - x) + STRETCH * (fc - y) * (fc - y));
+
+            const b: u21 = if (dist < INN_RADIUS) '0' else if (dist < OUT_RADIUS) '.' else ' ';
             cell.setSymbol(b);
         }
     }

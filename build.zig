@@ -45,6 +45,9 @@ pub fn build(b: *std.Build) void {
     libs.dependOn(&libthermit.step);
     libs.dependOn(&header.step);
 
+    const check = b.step("check", "zls check step");
+    // check.dependOn(&thermitLib.step);
+
     // ----------------------------- Examples ----------------------------------
 
     const EXAMPLES = .{
@@ -52,16 +55,19 @@ pub fn build(b: *std.Build) void {
             .name = "screensize",
             .desc = "Example that prints the current screen size",
             .need = .thermit,
+            .check = false,
         },
         .{
             .name = "tuianimation",
             .desc = "Example that shows a basic animation",
             .need = .scinee,
+            .check = false,
         },
         .{
             .name = "readme",
             .desc = "Example that shows a basic animation",
             .need = .scinee,
+            .check = true,
         },
     };
 
@@ -84,6 +90,8 @@ pub fn build(b: *std.Build) void {
         const exampleStep = b.step("example-" ++ example.name, example.desc);
         const exampleRun = b.addRunArtifact(exe);
         exampleStep.dependOn(&exampleRun.step);
+
+        if (example.check) check.dependOn(&exe.step);
     }
 
     // ------------------------------ Tests -----------------------------------

@@ -14,18 +14,32 @@ const Terminal = ext.Terminal;
 const ThermitError = ext.ThermitError;
 
 // comptime {
-//     std.debug.assert(@TypeOf(exter.terminalRead) == @TypeOf(terminalRead));
+//     std.debug.assert(@TypeOf(ext.terminalRead) == @TypeOf(terminalRead));
 // }
-// pub export fn terminalRead(terminal: Terminal, timeout: i32, event: [*c]Event) void {
-//     const e: *u64 = event orelse return;
-//     _ = e; // autofix
-//     const term: *inner.Terminal = @alignCast(@ptrCast(terminal.?));
-//     const ev = term.read(timeout) catch {
-//         return; // .{ .type = .Error };
-//     };
-//     _ = ev; // autofix
-//     // return .{ .type = .None };
-// }
+pub export fn terminalRead(terminal: ?*Terminal, timeout: i32, event: [*c]Event) ThermitError {
+    const term: *inner.Terminal = @alignCast(@ptrCast(
+        terminal orelse return ext.ThermitErrorGeneric,
+    ));
+
+    const e: *Event = event orelse return ext.ThermitErrorGeneric;
+
+    const ev = term.read(timeout) catch {
+        return ext.ThermitErrorGeneric;
+    };
+
+    switch (ev) {
+        .Key => |ke| e.* = .{
+            .event_type = ext.EventTypeKey,
+            .key = inner.keys.bits(ke),
+        },
+        .Timeout => e.* = .{ .event_type = ext.EventTypeTimeout },
+        .End => e.* = .{ .event_type = ext.EventTypeNone },
+        .Resize => e.* = .{ .event_type = ext.EventTypeResize },
+        .Unknown => unreachable,
+    }
+
+    return ext.ThermitErrorNone;
+}
 
 // pub export fn terminalEnableRawMode(terminal: Terminal) callconv(.C) ThermitError {
 //     const term: *inner.Terminal = @alignCast(@ptrCast(terminal));

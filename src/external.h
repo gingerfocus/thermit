@@ -3,29 +3,32 @@
 
 #include <stdint.h>
 
-#define Terminal void*
+typedef enum {
+    EventTypeKey,
+    EventTypeResize,
+    EventTypeNone,
+    EventTypeTimeout,
+    // EventTypeError 
+} EventType;
 
-enum { Key, Resize, None, Error } EventType;
+typedef uint16_t KeyEvent;
 
-#define KeyEvent uint16_t
-// pub const KeyEvent = inner.KeyEvent;
+typedef struct __Terminal Terminal;
 
-struct {
-    // enum EventType event_type;
+typedef struct {
+    EventType event_type;
     /// Data only Valid if EventType is Key
-    // KeyEvent key;
+    KeyEvent key;
 } Event;
 
+typedef enum {
+    ThermitErrorNone,
+    ThermitErrorGeneric
+} ThermitError;
 
-// __attribute__((__nonnull__))
-// void terminalRead(Terminal terminal, int32_t timeout, Event *ev);
+// __attribute__((__nonnull__)) 
+ThermitError
+terminalRead(Terminal *terminal, int32_t timeout, Event *ev);
 
-
-// pub const ThermitError = enum(u8) {
-//     None = 0,
-//     Generic = 1,
-// };
-// pub export const ThermitErrorNone: u8 = 0;
-// pub export const ThermitErrorGeneric: u8 = 1;
 
 #endif /* THERMIT_H */

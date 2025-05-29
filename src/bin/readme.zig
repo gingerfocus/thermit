@@ -1,5 +1,6 @@
 const std = @import("std");
 const scu = @import("scured");
+const thr = scu.thermit;
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
@@ -19,8 +20,9 @@ pub fn main() !void {
 
     while (true) {
         const ev = try term.tty.read(1000);
+
         switch (ev) {
-            .Key => |key| if (key.character.b() == 'q') break,
+            .Key => |key| if (thr.keys.bits(key) == 'q') break,
             else => {},
         }
     }

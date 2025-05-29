@@ -143,10 +143,10 @@ const Modifier = packed struct(u8) {
 };
 
 const Cell = struct {
-    symbol: u21,
-    fg: Color,
-    bg: Color,
-    mod: Modifier,
+    symbol: u21 = 0,
+    fg: Color = .Reset,
+    bg: Color = .Reset,
+    mod: Modifier = std.mem.zeroes(Modifier),
     /// Zeroed value is to not render the cell, this allows the array to just
     /// be memset to zero to reset frame buffer
     render: bool = false,
@@ -260,7 +260,7 @@ pub const Term = struct {
             self.size = try trm.getWindowSize(self.tty.f.handle);
             self.buffer = try self.a.realloc(self.buffer, self.size.x * self.size.y);
         }
-        @memset(std.mem.asBytes(self.buffer), 0);
+        @memset(self.buffer, Cell{});
     }
 
     /// Flushes out the current buffer to the screen

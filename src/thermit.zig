@@ -148,7 +148,7 @@ pub const Terminal = struct {
             signalHandlerInstalled = true;
 
             // var old = std.mem.zeroes(std.posix.Sigaction);
-            try std.posix.sigaction(
+            std.posix.sigaction(
                 std.posix.SIG.WINCH,
                 &std.posix.Sigaction{
                     .handler = .{ .sigaction = sigWinchHandler },
@@ -339,7 +339,7 @@ pub fn getWindowSize(fd: std.posix.fd_t) !Size {
     if (std.posix.system.ioctl(fd, std.posix.T.IOCGWINSZ, @intFromPtr(&win)) != 0) {
         return error.bad_ioctl;
     }
-    return .{ .x = win.ws_col, .y = win.ws_row };
+    return .{ .x = win.col, .y = win.row };
 }
 
 pub fn csi(comptime expr: []const u8) []const u8 {
