@@ -3,124 +3,12 @@ pub const thermit = @import("thermit");
 const std = @import("std");
 const trm = thermit;
 
+const Color = trm.Color;
+
 // pub const FrameBuffers = std.AutoArrayHashMapUnmanaged(
 //     Term.Screen,
 //     std.ArrayListUnmanaged(u8),
 // );
-
-/// Adapted from ratatui
-const Color = union(enum) {
-    /// Resets the terminal color.
-    Reset,
-    /// Black color.
-    Black,
-    /// Dark grey color.
-    DarkGrey,
-    /// Light red color.
-    Red,
-    /// Dark red color.
-    DarkRed,
-    /// Light green color.
-    Green,
-    /// Dark green color.
-    DarkGreen,
-    /// Light yellow color.
-    Yellow,
-    /// Dark yellow color.
-    DarkYellow,
-    /// Light blue color.
-    Blue,
-    /// Dark blue color.
-    DarkBlue,
-    /// Light magenta color.
-    Magenta,
-    /// Dark magenta color.
-    DarkMagenta,
-    /// Light cyan color.
-    Cyan,
-    /// Dark cyan color.
-    DarkCyan,
-    /// White color.
-    White,
-    /// Grey color.
-    Grey,
-    /// An RGB color. See [RGB color model](https://en.wikipedia.org/wiki/RGB_color_model) for more info.
-    ///
-    /// Most UNIX terminals and Windows 10 supported only.
-    /// See [Platform-specific notes](enum.Color.html#platform-specific-notes) for more info.
-    Rgb: struct { u8, u8, u8 },
-    /// An ANSI color. See [256 colors - cheat sheet](https://jonasjacek.github.io/colors/) for more info.
-    ///
-    /// Most UNIX terminals and Windows 10 supported only.
-    /// See [Platform-specific notes](enum.Color.html#platform-specific-notes) for more info.
-    AnsiValue: u8,
-
-    const ColorType = enum {
-        Foreground,
-        Background,
-        Underline,
-
-        fn indicator(self: ColorType) u8 {
-            return switch (self) {
-                .Foreground => 38,
-                .Background => 48,
-                .Underline => 58,
-            };
-        }
-    };
-
-    pub fn writeSequence(self: Color, wr: std.io.AnyWriter, ctype: ColorType) !void {
-        // fg = 38; color | reset = 39
-        // bg = 48; color | reset = 49
-        // ul = 58; color | reset = 59
-        //
-        // colors:
-        // - 5;[1-15]
-        // user defined colors
-        // - 2;{r};{g};{b}
-
-        // set color -        esc code   set bg     color11   color cmd
-        //     return "\x1B[" ++ "48;" ++ "5;11" ++ "m";
-
-        // try writer.writeAll("\x1B[" ++ "48;" ++ "5;11" ++ "m");
-        //
-        // // reset color -      esc code  reset bg  color cmd
-        // try writer.writeAll("\x1B[" ++ "49" ++ "m");
-
-        try wr.writeAll("\x1B[");
-
-        if (self == .Reset) {
-            try std.fmt.format(wr, "{}", .{ctype.indicator() + 1});
-        } else {
-            try std.fmt.format(wr, "{};", .{ctype.indicator()});
-            const color = switch (self) {
-                .Black => "5;0",
-                .DarkGrey => "5;8",
-                .Red => "5;9",
-                .DarkRed => "5;1",
-                .Green => "5;10",
-                .DarkGreen => "5;2",
-                .Yellow => "5;11",
-                .DarkYellow => "5;3",
-                .Blue => "5;12",
-                .DarkBlue => "5;4",
-                .Magenta => "5;13",
-                .DarkMagenta => "5;5",
-                .Cyan => "5;14",
-                .DarkCyan => "5;6",
-                .White => "5;15",
-                .Grey => "5;7",
-                // Color::Rgb { r, g, b } => write!(f, "2;{r};{g};{b}"),
-                .Rgb => @panic("todo"),
-                .AnsiValue => @panic("todo"), // 5;{n}
-                .Reset => unreachable,
-            };
-            try wr.writeAll(color);
-        }
-
-        try wr.writeAll("m");
-    }
-};
 
 comptime {
     std.debug.assert(@sizeOf(Color) == @sizeOf(u32));
@@ -130,7 +18,7 @@ comptime {
     // std.debug.assert(color == .Reset);
 }
 
-const Modifier = packed struct(u8) {
+pub const Modifier = packed struct(u8) {
     bold: bool,
     dim: bool,
     italic: bool,
@@ -142,7 +30,7 @@ const Modifier = packed struct(u8) {
     crossed_out: bool,
 };
 
-const Cell = struct {
+pub const Cell = struct {
     symbol: u21 = 0,
     fg: Color = .Reset,
     bg: Color = .Reset,
