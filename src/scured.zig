@@ -5,41 +5,15 @@ const trm = thermit;
 
 const Color = trm.Color;
 
-// pub const FrameBuffers = std.AutoArrayHashMapUnmanaged(
-//     Term.Screen,
-//     std.ArrayListUnmanaged(u8),
-// );
-
-comptime {
-    std.debug.assert(@sizeOf(Color) == @sizeOf(u32));
-
-    // var color: Color = undefined;
-    // @memset(std.mem.asBytes(&color), 0);
-    // std.debug.assert(color == .Reset);
-}
-
-pub const Modifier = packed struct(u8) {
-    bold: bool,
-    dim: bool,
-    italic: bool,
-    underlined: bool,
-    slow_blink: bool,
-    rapid_blink: bool,
-    // reversed: bool,
-    hidden: bool,
-    crossed_out: bool,
-};
-
 pub const Cell = struct {
     symbol: u21 = 0,
     fg: Color = .Reset,
     bg: Color = .Reset,
-    mod: Modifier = std.mem.zeroes(Modifier),
     /// Zeroed value is to not render the cell, this allows the array to just
     /// be memset to zero to reset frame buffer
     render: bool = false,
 
-    pub inline fn setSymbol(self: *Cell, char: u21) void {
+    pub inline fn _setSymbol(self: *Cell, char: u21) void {
         self.symbol = char;
     }
 };
@@ -106,10 +80,6 @@ pub const Term = struct {
 
         const ptr = &self.buffer[i];
         ptr.render = true;
-
-        // HACK: zeroing color is bad for many reasons, this however fixes the problem kinda
-        ptr.fg = .Reset;
-        ptr.bg = .Reset;
         return ptr;
     }
 
@@ -122,13 +92,18 @@ pub const Term = struct {
         return self.getCell(screen.x + x, screen.y + y);
     }
 
+    // pub const draw = @compileError(
+    //     \\Function `draw` is depricated, consider using `getScreenCell` in a
+    //     \\loop or `writeBuffer` if that is what you really need
+    // );
+
     pub fn writeBuffer(self: Term, screen: Screen, x: u16, y: u16, buffer: []const u8) void {
         var col: u16 = x;
         for (buffer) |ch| {
             if (!(col < screen.w)) return;
 
             const cell = self.getScreenCell(screen, col, y) orelse return;
-            cell.setSymbol(ch);
+            cell.symbol = ch;
 
             col += 1;
         }
@@ -137,11 +112,6 @@ pub const Term = struct {
     pub fn moveCursor(self: *Term, screen: Screen, x: u16, y: u16) void {
         self.cursor = .{ .x = screen.x + x, .y = screen.y + y };
     }
-
-    pub const draw = @compileError(
-        \\Function `draw` is depricated, consider using `getScreenCell` in a
-        \\loop or `writeBuffer` if that is what you really need
-    );
 
     pub fn start(self: *Term, resize: bool) !void {
         if (resize) {
@@ -211,19 +181,24 @@ pub const Term = struct {
     }
 };
 
+/// Logging utility class for setting file logging in terminal programs
 pub const log = struct {
-    var logOutputFile: ?std.fs.File = null;
+    pub var file: ?std.fs.File = null;
 
     /// File ownership is still maintained by the caller and *you* must close
-    // it. If you need acsess to it at a later point use `getFile`. Argument
+    // it. If you need access to it at a later point use `getFile`. Argument
     // can be null which removes the log file.
-    pub fn setFile(f: ?std.fs.File) void {
-        logOutputFile = f;
+    //
+    // DEPRICATED: just set the file variable
+    pub fn _setFile(f: ?std.fs.File) void {
+        file = f;
     }
 
     /// Gets the file used for logging if any
-    pub fn getFile() ?std.fs.File {
-        return logOutputFile;
+    ///
+    // DEPRICATED: just reference the file variable
+    pub fn _getFile() ?std.fs.File {
+        return file;
     }
 
     fn levelToText(level: std.log.Level) []const u8 {
@@ -237,28 +212,23 @@ pub const log = struct {
     }
 
     pub fn toFile(
-        comptime message_level: std.log.Level,
+        comptime level: std.log.Level,
         comptime scope: @TypeOf(.enum_literal),
         comptime format: []const u8,
         args: anytype,
     ) void {
         _ = scope;
-        if (logOutputFile) |f| {
-            const level = comptime levelToText(message_level);
-            const fmt = level ++ ": " ++ format ++ "\n";
+        if (file) |f| {
+            const lvl = comptime levelToText(level);
+            const fmt = lvl ++ ": " ++ format ++ "\n";
             std.fmt.format(f.writer(), fmt, args) catch {};
         }
     }
 
     pub fn toNull(
-        comptime message_level: std.log.Level,
-        comptime scope: @TypeOf(.enum_literal),
-        comptime format: []const u8,
-        args: anytype,
-    ) void {
-        _ = message_level;
-        _ = scope;
-        _ = format;
-        _ = args;
-    }
+        comptime _: std.log.Level,
+        comptime _: @TypeOf(.enum_literal),
+        comptime _: []const u8,
+        _: anytype,
+    ) void {}
 };

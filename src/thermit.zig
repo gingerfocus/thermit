@@ -12,7 +12,9 @@ pub const KeyModifiers = packed struct(u8) {
     shft: bool = false,
     ctrl: bool = false,
     altr: bool = false,
-    _pad: u5 = 0,
+    supr: bool = false,
+    fnky: bool = false,
+    _pad: u3 = 0,
 
     /// Convience meathod for getting the bits
     pub fn bits(self: KeyModifiers) u8 {
@@ -482,10 +484,18 @@ pub fn leaveAlternateScreen(writer: anytype) !void {
 //     jmp.longjmp(buf, 1); // jumpts to point and returns 1 (value passed)
 // }
 
+comptime {
+    std.debug.assert(@sizeOf(Color) == @sizeOf(u32));
+
+    // var color: Color = undefined;
+    // @memset(std.mem.asBytes(&color), 0);
+    // std.debug.assert(color == .Reset);
+}
+
 /// Adapted from ratatui
-pub const Color = union(enum) {
+pub const Color = union(enum(u8)) {
     /// Resets the terminal color.
-    Reset,
+    Reset = 0,
     /// Black color.
     Black,
     /// Dark grey color.
@@ -593,5 +603,69 @@ pub const Color = union(enum) {
         }
 
         try wr.writeAll("m");
+    }
+
+    pub fn toRgb(self: Color) struct { u8, u8, u8 } {
+        return switch (self) {
+            .Black => .{ 0, 0, 0 },
+            .DarkGrey => .{ 128, 128, 128 },
+            .Red => .{ 255, 85, 85 },
+            .DarkRed => .{ 128, 0, 0 },
+            .Green => .{ 85, 255, 85 },
+            .DarkGreen => .{ 0, 128, 0 },
+            .Yellow => .{ 255, 255, 85 },
+            .DarkYellow => .{ 128, 128, 0 },
+            .Blue => .{ 85, 85, 255 },
+            .DarkBlue => .{ 0, 0, 128 },
+            .Magenta => .{ 255, 85, 255 },
+            .DarkMagenta => .{ 128, 0, 128 },
+            .Cyan => .{ 85, 255, 255 },
+            .DarkCyan => .{ 0, 128, 128 },
+            .White => .{ 255, 255, 255 },
+            .Grey => .{ 192, 192, 192 },
+            .Rgb => |rgb| rgb,
+            // .AnsiValue => |n| {
+            //     // 16-231: 6x6x6 color cube, 232-255: grayscale ramp
+            //     if (n < 16) {
+            //         // Standard colors, fallback to a basic palette
+            //         const table = [_][3]u8{
+            //             .{ 0, 0, 0 }, // 0: black
+            //             .{ 128, 0, 0 }, // 1: red
+            //             .{ 0, 128, 0 }, // 2: green
+            //             .{ 128, 128, 0 }, // 3: yellow
+            //             .{ 0, 0, 128 }, // 4: blue
+            //             .{ 128, 0, 128 }, // 5: magenta
+            //             .{ 0, 128, 128 }, // 6: cyan
+            //             .{ 192, 192, 192 }, // 7: white (light gray)
+            //             .{ 128, 128, 128 }, // 8: bright black (dark gray)
+            //             .{ 255, 85, 85 }, // 9: bright red
+            //             .{ 85, 255, 85 }, // 10: bright green
+            //             .{ 255, 255, 85 }, // 11: bright yellow
+            //             .{ 85, 85, 255 }, // 12: bright blue
+            //             .{ 255, 85, 255 }, // 13: bright magenta
+            //             .{ 85, 255, 255 }, // 14: bright cyan
+            //             .{ 255, 255, 255 }, // 15: bright white
+            //         };
+            //         return table[n];
+            //     } else if (n >= 16 and n <= 231) {
+            //         const idx = n - 16;
+            //         const r = @as(u8, @intCast((idx / 36) % 6));
+            //         const g = @as(u8, @intCast((idx / 6) % 6));
+            //         const b = @as(u8, @intCast(idx % 6));
+            //         return .{
+            //             @as(u8, r * 51),
+            //             @as(u8, g * 51),
+            //             @as(u8, b * 51),
+            //         };
+            //     } else if (n >= 232 and n <= 255) {
+            //         const gray = @as(u8, 8 + (n - 232) * 10);
+            //         return .{ gray, gray, gray };
+            //     } else {
+            //         return .{ 0, 0, 0 };
+            //     }
+            // },
+            .Reset => .{ 0, 0, 0 },
+            else => .{ 0, 0, 0 },
+        };
     }
 };

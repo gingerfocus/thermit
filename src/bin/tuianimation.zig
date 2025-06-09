@@ -11,7 +11,7 @@ pub fn main() !void {
     // complex logging features just make your own nerd
     const f = try std.fs.cwd().createFile("example.log", .{});
     defer f.close();
-    scu.log.setFile(f);
+    scu.log.file = f;
 
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -65,7 +65,7 @@ fn fullRedraw(term: *scu.Term, start: i64) !void {
 
         var c: u16 = 1;
         for (buf) |ch| {
-            term.getScreenCell(leftside, c, r).?.setSymbol(ch);
+            if (term.getScreenCell(leftside, c, r)) |cell| cell.symbol = ch;
             c += 1;
         }
     }
@@ -76,7 +76,7 @@ fn fullRedraw(term: *scu.Term, start: i64) !void {
     var c: u16 = 0;
     while (c < statusbar.w) : (c += 1) {
         const cell = term.getScreenCell(statusbar, c, 0) orelse break;
-        cell.setSymbol('>');
+        cell.symbol = '>';
         cell.fg = .Red;
         cell.bg = .Blue;
     }
@@ -119,7 +119,7 @@ fn screenRedraw(term: *scu.Term, start: i64) !void {
             const dist = @sqrt((fr - x) * (fr - x) + STRETCH * (fc - y) * (fc - y));
 
             const b: u21 = if (dist < INN_RADIUS) '0' else if (dist < OUT_RADIUS) '.' else ' ';
-            cell.setSymbol(b);
+            cell.symbol = b;
         }
     }
 }

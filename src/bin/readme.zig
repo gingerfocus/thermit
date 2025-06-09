@@ -14,7 +14,7 @@ pub fn main() !void {
     const fullScreen = term.makeScreen(0, 0, null, null);
     term.writeBuffer(fullScreen, 0, 0, "hello world");
 
-    term.getCell(0, 1).?.setSymbol('本');
+    if (term.getCell(0, 1)) |cell| cell.symbol = '本';
 
     try term.finish(); // flushes the render buffer
 
