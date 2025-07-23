@@ -299,7 +299,7 @@ pub const Terminal = struct {
             // termios.iflag.INLCR = false;
             // termios.iflag.IGNCR = false;
             termios.iflag.ICRNL = false;
-            // termios.iflag.IXON = false;
+            termios.iflag.IXON = false; // disable ^S/^Q special handling
 
             // termios.oflag.OPOST = false;
 
@@ -308,8 +308,9 @@ pub const Terminal = struct {
             // setermios to non-cannonicle mode: input is not buffered on new lines or parsed
             // by termioserminal
             termios.lflag.ICANON = false;
-            termios.lflag.ISIG = false;
+            termios.lflag.ISIG = false; // disable ^C/^Z special handling
             termios.lflag.IEXTEN = false;
+
 
             // termios.cflag.PARENB = false;
             // termios.cflag.CSIZE = .CS8;
