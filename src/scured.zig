@@ -223,7 +223,8 @@ pub const log = struct {
             const fmt = lvl ++ ": " ++ format ++ "\n";
             var buf: [4096]u8 = undefined;
             const message = std.fmt.bufPrint(&buf, fmt, args) catch return;
-            f.writer().interface.writeAll(message) catch {};
+            const n = std.posix.write(f.handle, message) catch {};
+            _ = n;
         }
     }
 
