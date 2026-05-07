@@ -218,12 +218,11 @@ pub const log = struct {
         args: anytype,
     ) void {
         _ = scope;
-        if (file) |f| {
+        if (file) |*f| {
             const lvl = comptime levelToText(level);
-            const fmt = lvl ++ ": " ++ format ++ "\n";
             var buf: [4096]u8 = undefined;
-            var w = f.writer(&buf);
-            w.interface.print(fmt, args) catch {};
+            const message = std.fmt.bufPrint(&buf, lvl ++ ": " ++ format ++ "\n", args) catch return;
+            f.writeAll(message) catch {};
         }
     }
 
