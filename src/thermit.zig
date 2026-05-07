@@ -123,7 +123,7 @@ fn ctrl(comptime c: u8) u8 {
 pub const Terminal = struct {
     /// the file handle of this terminal, it is perfectly fine to use this for
     /// anything
-    f: std.fs.File,
+    f: std.Io.File,
 
     /// used for restoreing the terminal after raw mode
     oldtermios: ?std.posix.termios = null,
@@ -144,7 +144,7 @@ pub const Terminal = struct {
     ///     tty.f.close();
     /// }
     /// ```
-    pub fn init(f: std.fs.File) !Terminal {
+    pub fn init(f: std.Io.File) !Terminal {
         // install the global signal handler
         if (!signalHandlerInstalled) {
             signalHandlerInstalled = true;

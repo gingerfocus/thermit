@@ -29,7 +29,7 @@ pub const Term = struct {
 
     pub fn init(a: std.mem.Allocator) !Term {
         const fd = try std.posix.open("/dev/tty", .{ .ACCMODE = .RDWR }, 0);
-        const file = std.fs.File{ .handle = fd };
+        const file = std.Io.File{ .handle = fd };
 
         try trm.enterAlternateScreen(file.writer());
         var tty = try trm.Terminal.init(file);
@@ -183,21 +183,21 @@ pub const Term = struct {
 
 /// Logging utility class for setting file logging in terminal programs
 pub const log = struct {
-    pub var file: ?std.fs.File = null;
+    pub var file: ?std.Io.File = null;
 
     /// File ownership is still maintained by the caller and *you* must close
     // it. If you need access to it at a later point use `getFile`. Argument
     // can be null which removes the log file.
     //
     // DEPRICATED: just set the file variable
-    pub fn _setFile(f: ?std.fs.File) void {
+    pub fn _setFile(f: ?std.Io.File) void {
         file = f;
     }
 
     /// Gets the file used for logging if any
     ///
     // DEPRICATED: just reference the file variable
-    pub fn _getFile() ?std.fs.File {
+    pub fn _getFile() ?std.Io.File {
         return file;
     }
 
