@@ -8,37 +8,36 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/thermit.zig"),
     });
 
-    // an reference implementation of thermit
-    const spinner = b.addModule("spinner", .{
+    _ = b.addModule("spinner", .{
         .root_source_file = b.path("src/spinner.zig"),
+        .imports = &.{.{ .name = "thermit", .module = thermit }},
     });
-    spinner.addImport("thermit", thermit);
 
-    // an reference implementation of thermit
     const scured = b.addModule("scured", .{
         .root_source_file = b.path("src/scured.zig"),
+        .imports = &.{.{ .name = "thermit", .module = thermit }},
     });
-    scured.addImport("thermit", thermit);
 
     // ----------------------------- Library -----------------------------------
 
-    const thermitLib = b.addSharedLibrary(.{
-        .name = "thermit",
+    const ext_mod = b.createModule(.{
         .root_source_file = b.path("src/external.zig"),
-        .optimize = .ReleaseFast,
         .target = target,
+        .optimize = .ReleaseFast,
+        .link_libc = true,
+        .imports = &.{.{ .name = "thermit", .module = thermit }},
+    });
+    ext_mod.addIncludePath(b.path("src"));
+
+    const thermitLib = b.addLibrary(.{
+        .name = "thermit",
+        .root_module = ext_mod,
+        .linkage = .dynamic,
         .version = .{ .major = 0, .minor = 1, .patch = 0 },
     });
-    thermitLib.root_module.addImport("thermit", thermit);
-    thermitLib.addIncludePath(b.path("src"));
-    thermitLib.linkLibC();
 
     const libthermit = b.addInstallArtifact(thermitLib, .{});
 
-    // // HACK zig complier doesnt emit the header in the right place so just
-    // // tell it to make it and instead of using its location use the real one
-    // _ = thermitLib.getEmittedH();
-    // const header = b.addInstallHeaderFile(b.path(".zig-cache/thermit.h"), "thermit.h");
     const header = b.addInstallHeaderFile(b.path("src/external.h"), "thermit.h");
 
     const libs = b.step("lib", "Build the library");
@@ -46,7 +45,6 @@ pub fn build(b: *std.Build) void {
     libs.dependOn(&header.step);
 
     const check = b.step("check", "zls check step");
-    // check.dependOn(&thermitLib.step);
 
     // ----------------------------- Examples ----------------------------------
 
@@ -72,21 +70,20 @@ pub fn build(b: *std.Build) void {
     };
 
     inline for (EXAMPLES) |example| {
-        const exe = b.addExecutable(.{
-            .name = example.name,
+        const exe_mod = b.createModule(.{
             .root_source_file = b.path("src/bin/" ++ example.name ++ ".zig"),
             .target = target,
             .optimize = optimize,
         });
         switch (example.need) {
-            .thermit => {
-                exe.root_module.addImport("thermit", thermit);
-            },
-            .scinee => {
-                exe.root_module.addImport("scured", scured);
-            },
+            .thermit => exe_mod.addImport("thermit", thermit),
+            .scinee => exe_mod.addImport("scured", scured),
             else => {},
         }
+        const exe = b.addExecutable(.{
+            .name = example.name,
+            .root_module = exe_mod,
+        });
         const exampleStep = b.step("example-" ++ example.name, example.desc);
         const exampleRun = b.addRunArtifact(exe);
         exampleStep.dependOn(&exampleRun.step);
@@ -94,11 +91,15 @@ pub fn build(b: *std.Build) void {
         if (example.check) check.dependOn(&exe.step);
     }
 
-    // ------------------------------ Tests -----------------------------------
-    const t = b.addTest(.{
+    // ------------------------------ Tests ------------------------------------
+
+    const test_mod = b.createModule(.{
         .root_source_file = b.path("src/thermit.zig"),
         .target = target,
         .optimize = optimize,
+    });
+    const t = b.addTest(.{
+        .root_module = test_mod,
     });
 
     const tests = b.step("test", "Run unit tests");

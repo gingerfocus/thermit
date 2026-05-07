@@ -154,7 +154,7 @@ pub const Terminal = struct {
                 std.posix.SIG.WINCH,
                 &std.posix.Sigaction{
                     .handler = .{ .sigaction = sigWinchHandler },
-                    .mask = std.posix.empty_sigset,
+                    .mask = std.posix.sigemptyset(),
                     .flags = (std.posix.SA.SIGINFO | std.posix.SA.RESTART),
                 },
                 null,
@@ -310,7 +310,6 @@ pub const Terminal = struct {
             termios.lflag.ICANON = false;
             termios.lflag.ISIG = false; // disable ^C/^Z special handling
             termios.lflag.IEXTEN = false;
-
 
             // termios.cflag.PARENB = false;
             // termios.cflag.CSIZE = .CS8;
