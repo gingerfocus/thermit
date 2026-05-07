@@ -220,9 +220,10 @@ pub const log = struct {
         _ = scope;
         if (file) |*f| {
             const lvl = comptime levelToText(level);
+            const fmt = lvl ++ ": " ++ format ++ "\n";
             var buf: [4096]u8 = undefined;
-            const message = std.fmt.bufPrint(&buf, lvl ++ ": " ++ format ++ "\n", args) catch return;
-            f.writeAll(message) catch {};
+            const message = std.fmt.bufPrint(&buf, fmt, args) catch return;
+            f.writer().interface.writeAll(message) catch {};
         }
     }
 
