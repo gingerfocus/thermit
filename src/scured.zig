@@ -221,7 +221,9 @@ pub const log = struct {
         if (file) |f| {
             const lvl = comptime levelToText(level);
             const fmt = lvl ++ ": " ++ format ++ "\n";
-            std.fmt.format(f.writer(), fmt, args) catch {};
+            var buf: [4096]u8 = undefined;
+            var w = f.writer(&buf);
+            w.interface.print(fmt, args) catch {};
         }
     }
 
