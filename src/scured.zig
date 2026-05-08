@@ -30,7 +30,7 @@ pub const Term = struct {
 
     pub fn init(a: std.mem.Allocator) !Term {
         const io: std.Io = .{ .userdata = undefined, .vtable = undefined };
-        const file = try std.Io.Dir.cwd().openFile(io, "/dev/tty", .{ .ACCMODE = .RDWR });
+        const file = try std.Io.Dir.cwd().openFile(io, "/dev/tty", .{ .mode = .read_write });
         errdefer file.close(io);
 
         trm.enterAlternateScreen(file.handle) catch {};
