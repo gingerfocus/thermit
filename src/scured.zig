@@ -184,6 +184,7 @@ pub const Term = struct {
 /// Logging utility class for setting file logging in terminal programs
 pub const log = struct {
     pub var file: ?std.Io.File = null;
+    pub var io: std.Io = .{ .userdata = undefined, .vtable = undefined };
 
     /// File ownership is still maintained by the caller and *you* must close
     // it. If you need access to it at a later point use `getFile`. Argument
@@ -223,7 +224,7 @@ pub const log = struct {
             const fmt = lvl ++ ": " ++ format ++ "\n";
             var buf: [4096]u8 = undefined;
             const message = std.fmt.bufPrint(&buf, fmt, args) catch return;
-            var w = f.writer(.{}, &buf);
+            var w = f.writer(io, &buf);
             w.interface.writeAll(message) catch {};
         }
     }
