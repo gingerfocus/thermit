@@ -33,8 +33,6 @@ pub const Term = struct {
         const file = try std.Io.Dir.cwd().openFile(io, "/dev/tty", .{ .mode = .read_write });
         errdefer file.close(io);
 
-        trm.enterAlternateScreen(file.handle) catch {};
-
         var tty = try trm.Terminal.init(file);
 
         try tty.enableRawMode();

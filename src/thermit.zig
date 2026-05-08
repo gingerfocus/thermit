@@ -467,11 +467,11 @@ pub fn setCursorStyle(writer: anytype, style: CursorStyle) !void {
     });
 }
 
-pub fn enterAlternateScreen(writer: anytype) !void {
+pub fn enterAlternateScreen(writer: *std.Io.Writer) !void {
     try writer.writeAll(csi("?1049h"));
 }
 
-pub fn leaveAlternateScreen(writer: anytype) !void {
+pub fn leaveAlternateScreen(writer: *std.Io.Writer) !void {
     try writer.writeAll(csi("?1049l"));
 }
 
