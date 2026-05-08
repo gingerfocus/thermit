@@ -5,17 +5,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const thermit = b.addModule("thermit", .{
-        .root_source_file = b.path("src/thermit.zig"),
-    });
-
-    _ = b.addModule("spinner", .{
-        .root_source_file = b.path("src/spinner.zig"),
-        .imports = &.{.{ .name = "thermit", .module = thermit }},
-    });
-
-    const scured = b.addModule("scured", .{
-        .root_source_file = b.path("src/scured.zig"),
-        .imports = &.{.{ .name = "thermit", .module = thermit }},
+        .root_source_file = b.path("src/root.zig"),
     });
 
     // ----------------------------- Library -----------------------------------
@@ -52,19 +42,16 @@ pub fn build(b: *std.Build) void {
         .{
             .name = "screensize",
             .desc = "Example that prints the current screen size",
-            .need = .thermit,
             .check = false,
         },
         .{
             .name = "tuianimation",
             .desc = "Example that shows a basic animation",
-            .need = .scinee,
             .check = false,
         },
         .{
             .name = "readme",
             .desc = "Example that shows a basic animation",
-            .need = .scinee,
             .check = true,
         },
     };
@@ -75,11 +62,9 @@ pub fn build(b: *std.Build) void {
             .target = target,
             .optimize = optimize,
         });
-        switch (example.need) {
-            .thermit => exe_mod.addImport("thermit", thermit),
-            .scinee => exe_mod.addImport("scured", scured),
-            else => {},
-        }
+
+        exe_mod.addImport("thermit", thermit);
+
         const exe = b.addExecutable(.{
             .name = example.name,
             .root_module = exe_mod,

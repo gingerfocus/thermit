@@ -1,4 +1,240 @@
+pub const thermit = @import("thermit");
+
 const std = @import("std");
+
+pub const Cell = struct {
+    symbol: u21 = 0,
+    fg: Color = .Reset,
+    bg: Color = .Reset,
+    /// Zeroed value is to not render the cell, this allows the array to just
+    /// be memset to zero to reset frame buffer
+    render: bool = false,
+
+    pub inline fn _setSymbol(self: *Cell, char: u21) void {
+        self.symbol = char;
+    }
+};
+
+pub const Term = struct {
+    tty: Terminal,
+    buffer: []Cell,
+    size: Size,
+
+    cursor: ?Size = null,
+
+    al: std.mem.Allocator,
+    io: std.Io,
+
+    pub fn init(io: std.Io, al: std.mem.Allocator) !Term {
+        const file = try std.Io.Dir.openFileAbsolute(io, "/dev/tty", .{ .mode = .read_write });
+        errdefer file.close(io);
+
+        var tty = try Terminal.init(file);
+        try tty.enableRawMode();
+
+        const size = try getWindowSize(file.handle);
+
+        const buffer = try al.alloc(Cell, size.x * size.y);
+
+        return .{
+            .tty = tty,
+            .buffer = buffer,
+            .size = size,
+            .al = al,
+            .io = io,
+        };
+    }
+
+    pub fn deinit(self: *Term) void {
+        var wr_buf: [4096]u8 = undefined;
+        var wr = self.tty.f.writer(self.io, &wr_buf);
+        cursorShow(&wr.interface) catch {};
+        leaveAlternateScreen(&wr.interface) catch {};
+
+        self.tty.disableRawMode() catch {};
+        self.tty.f.close(self.io);
+        self.tty.deinit();
+
+        self.al.free(self.buffer);
+    }
+
+    pub const Screen = packed struct(u64) { x: u16, y: u16, w: u16, h: u16 };
+
+    /// Creates a screen at the given position, if width or height is null then
+    /// it extends to the end of the screen
+    pub fn makeScreen(self: Term, x: u16, y: u16, w: ?u16, h: ?u16) Screen {
+        return .{
+            .x = x,
+            .y = y,
+            .w = w orelse self.size.x - x,
+            .h = h orelse self.size.y - y,
+        };
+    }
+
+    pub fn getCell(self: Term, x: u16, y: u16) ?*Cell {
+        const i = (y * self.size.x) + x;
+        if (i >= self.buffer.len) return null;
+
+        const ptr = &self.buffer[i];
+        ptr.render = true;
+        return ptr;
+    }
+
+    pub fn getScreenCell(self: Term, screen: Screen, x: u16, y: u16) ?*Cell {
+        std.debug.assert(screen.x <= self.size.x);
+        std.debug.assert(screen.y <= self.size.y);
+        std.debug.assert(x <= screen.w);
+        std.debug.assert(y <= screen.h);
+
+        return self.getCell(screen.x + x, screen.y + y);
+    }
+
+    // pub const draw = @compileError(
+    //     \\Function `draw` is depricated, consider using `getScreenCell` in a
+    //     \\loop or `writeBuffer` if that is what you really need
+    // );
+
+    pub fn writeBuffer(self: Term, screen: Screen, x: u16, y: u16, buffer: []const u8) void {
+        var col: u16 = x;
+        for (buffer) |ch| {
+            if (!(col < screen.w)) return;
+
+            const cell = self.getScreenCell(screen, col, y) orelse return;
+            cell.symbol = ch;
+
+            col += 1;
+        }
+    }
+
+    pub fn moveCursor(self: *Term, screen: Screen, x: u16, y: u16) void {
+        self.cursor = .{ .x = screen.x + x, .y = screen.y + y };
+    }
+
+    pub fn start(self: *Term, resize: bool) !void {
+        if (resize) {
+            self.size = try getWindowSize(self.tty.f.handle);
+            self.buffer = try self.al.realloc(self.buffer, self.size.x * self.size.y);
+        }
+        @memset(self.buffer, Cell{});
+    }
+
+    /// Flushes out the current buffer to the screen
+    pub fn finish(self: *Term) !void {
+        var buf: std.ArrayListUnmanaged(u8) = .{ .items = &.{}, .capacity = 0 };
+        defer buf.deinit(self.al);
+
+        var wr_buf: [4096]u8 = undefined;
+        var wr = self.tty.f.writer(self.io, &wr_buf);
+
+        try cursorHide(&wr.interface);
+        // try clear(wr, .All);
+
+        var fg = Color.Reset;
+        var bg = Color.Reset;
+        // var modifier = Modifier{};
+
+        // -1 so that when adding later it doesnt overflow
+        var pos: Size = .{ .x = std.math.maxInt(u16) - 1, .y = std.math.maxInt(u16) - 1 };
+
+        var i: u16 = 0;
+        for (self.buffer) |cell| {
+            defer i += 1;
+            if (!cell.render) continue;
+
+            const x: u16 = i % self.size.x;
+            const y: u16 = i / self.size.x;
+
+            if (pos.x + 1 != x or pos.y != y) {
+                try moveTo(&wr.interface, x, y);
+            }
+            pos = .{ .x = x, .y = y };
+
+            // TODO: check modifier is same and change update if not
+
+            if (cell.fg != fg) {
+                try cell.fg.writeSequence(wr, .Foreground);
+                fg = cell.fg;
+            }
+
+            if (cell.bg != bg) {
+                try cell.bg.writeSequence(wr, .Background);
+                bg = cell.bg;
+            }
+
+            var codepoint: [4]u8 = undefined;
+            const s = try std.unicode.utf8Encode(cell.symbol, &codepoint);
+            try wr.writeAll(codepoint[0..s]);
+        }
+        // TODO: reset all color and attris at end
+
+        if (self.cursor) |loc| {
+            try moveTo(wr, loc.x, loc.y);
+            try cursorShow(wr);
+        } // else keep cursor hidden
+
+        // write buffer to terminal
+        try self.tty.f.writer(self.io, &wr_buf).interface.writeAll(buf.items);
+
+        // let the terminal deal with all the shit we just wrote
+        try std.posix.syncfs(self.tty.f.handle);
+    }
+};
+
+/// Logging utility class for setting file logging in terminal programs
+pub const log = struct {
+    pub var file: ?std.Io.File = null;
+    pub var io: std.Io = .{ .userdata = undefined, .vtable = undefined };
+
+    /// File ownership is still maintained by the caller and *you* must close
+    // it. If you need access to it at a later point use `getFile`. Argument
+    // can be null which removes the log file.
+    //
+    // DEPRICATED: just set the file variable
+    pub fn _setFile(f: ?std.Io.File) void {
+        file = f;
+    }
+
+    /// Gets the file used for logging if any
+    ///
+    // DEPRICATED: just reference the file variable
+    pub fn _getFile() ?std.Io.File {
+        return file;
+    }
+
+    fn levelToText(level: std.log.Level) []const u8 {
+        return switch (level) {
+            .err => "ERROR",
+            .warn => "WARN",
+            .info => "INFO",
+            .debug => "DEBUG",
+            // else => "UNKNOWN",
+        };
+    }
+
+    pub fn toFile(
+        comptime level: std.log.Level,
+        comptime scope: @TypeOf(.enum_literal),
+        comptime format: []const u8,
+        args: anytype,
+    ) void {
+        _ = scope;
+        if (file) |*f| {
+            const lvl = comptime levelToText(level);
+            const fmt = lvl ++ ": " ++ format ++ "\n";
+            var buf: [4096]u8 = undefined;
+            const message = std.fmt.bufPrint(&buf, fmt, args) catch return;
+            var w = f.writer(io, &buf);
+            w.interface.writeAll(message) catch {};
+        }
+    }
+
+    pub fn toNull(
+        comptime _: std.log.Level,
+        comptime _: @TypeOf(.enum_literal),
+        comptime _: []const u8,
+        _: anytype,
+    ) void {}
+};
 
 pub const Event = union(enum) {
     Key: KeyEvent,
@@ -107,11 +343,11 @@ var signalHandlerInstalled = false;
 var handleDataPipe: std.posix.fd_t = -1;
 
 // fn (sig: i32, info: *const posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.c) noreturn {
-fn sigWinchHandler(sig: i32, _: *const std.posix.siginfo_t, _: ?*anyopaque) callconv(.c) void {
-    std.debug.assert(sig == std.posix.SIG.WINCH);
+fn sigWinchHandler(sig: std.posix.SIG, _: *const std.posix.siginfo_t, _: ?*anyopaque) callconv(.c) void {
+    std.debug.assert(sig == .WINCH);
 
     if (handleDataPipe < 0) return;
-    _ = std.posix.write(handleDataPipe, "x") catch 0;
+    _ = std.posix.system.write(handleDataPipe, "x", 1);
 }
 
 fn ctrl(comptime c: u8) u8 {
@@ -162,7 +398,7 @@ pub const Terminal = struct {
         }
         if (handleDataPipe >= 0) return error.Occupied;
 
-        const pipe = try std.posix.pipe();
+        const pipe = try std.Io.Threaded.pipe2(.{});
         handleDataPipe = pipe[1];
 
         const pollfds: [2]std.posix.pollfd = .{
@@ -175,10 +411,10 @@ pub const Terminal = struct {
 
     pub fn deinit(self: Terminal) void {
         // clean up our mess, signal handler continues to run with this
-        std.posix.close(handleDataPipe);
+        _ = std.posix.system.close(handleDataPipe);
         handleDataPipe = -1;
 
-        std.posix.close(self.pollfds[1].fd);
+        _ = std.posix.system.close(self.pollfds[1].fd);
     }
 
     /// timeout: time in miliseconds to wait for a read
@@ -348,42 +584,42 @@ pub fn csi(comptime expr: []const u8) []const u8 {
     return comptime "\x1B[" ++ expr;
 }
 
-pub fn moveTo(writer: anytype, x: u16, y: u16) !void {
-    try std.fmt.format(writer, csi("{};{}H"), .{ y + 1, x + 1 });
+pub fn moveTo(writer: *std.Io.Writer, x: u16, y: u16) !void {
+    try writer.print(csi("{};{}H"), .{ y + 1, x + 1 });
 }
 
 /// move down one line and moves cursor to start of line
-pub fn nextLine(writer: anytype, n: u16) !void {
-    try std.fmt.format(writer, csi("{}E"), .{n});
+pub fn nextLine(writer: *std.Io.Writer, n: u16) !void {
+    try writer.print(csi("{}E"), .{n});
 }
 
 /// move up one line and moves cursor to start of line
-pub fn prevLine(writer: anytype, n: u16) !void {
-    try std.fmt.format(writer, csi("{}F"), .{n});
+pub fn prevLine(writer: *std.Io.Writer, n: u16) !void {
+    try writer.print(csi("{}F"), .{n});
 }
 
-pub fn moveCol(writer: anytype, n: u16) !void {
-    try std.fmt.format(writer, csi("{}G"), .{n + 1});
+pub fn moveCol(writer: *std.Io.Writer, n: u16) !void {
+    try writer.print(csi("{}G"), .{n + 1});
 }
 
-pub fn moveRow(writer: anytype, n: u16) !void {
-    try std.fmt.format(writer, csi("{}d"), .{n + 1});
+pub fn moveRow(writer: *std.Io.Writer, n: u16) !void {
+    try writer.print(csi("{}d"), .{n + 1});
 }
 
-pub fn moveUp(writer: anytype, n: u16) !void {
-    try std.fmt.format(writer, csi("{}A"), .{n});
+pub fn moveUp(writer: *std.Io.Writer, n: u16) !void {
+    try writer.print(csi("{}A"), .{n});
 }
 
-pub fn moveDown(writer: anytype, n: u16) !void {
-    try std.fmt.format(writer, csi("{}B"), .{n});
+pub fn moveDown(writer: *std.Io.Writer, n: u16) !void {
+    try writer.print(csi("{}B"), .{n});
 }
 
-pub fn moveRight(writer: anytype, n: u16) !void {
-    try std.fmt.format(writer, csi("{}C"), .{n});
+pub fn moveRight(writer: *std.Io.Writer, n: u16) !void {
+    try writer.print(csi("{}C"), .{n});
 }
 
-pub fn moveLeft(writer: anytype, n: u16) !void {
-    try std.fmt.format(writer, csi("{}D"), .{n});
+pub fn moveLeft(writer: *std.Io.Writer, n: u16) !void {
+    try writer.print(csi("{}D"), .{n});
 }
 
 const ClearType = enum {
@@ -412,24 +648,24 @@ pub fn clear(writer: anytype, cleartype: ClearType) !void {
     });
 }
 
-pub fn savePosition(writer: anytype) !void {
+pub fn savePosition(writer: *std.Io.Writer) !void {
     try writer.writeAll("\x1B7");
 }
 
-pub fn restorePosition(writer: anytype) !void {
+pub fn restorePosition(writer: *std.Io.Writer) !void {
     try writer.writeAll("\x1B8");
 }
 
-pub fn cursorHide(writer: anytype) !void {
+pub fn cursorHide(writer: *std.Io.Writer) !void {
     try writer.writeAll(csi("?25l"));
 }
 
-pub fn cursorShow(writer: anytype) !void {
+pub fn cursorShow(writer: *std.Io.Writer) !void {
     try writer.writeAll(csi("?25h"));
 }
 
 /// Enables Cursor Blinking
-pub fn cursorBlinkEnable(writer: anytype) !void {
+pub fn cursorBlinkEnable(writer: *std.Io.Writer) !void {
     try writer.writeAll(csi("?12h"));
 }
 
@@ -553,7 +789,7 @@ pub const Color = union(enum(u8)) {
         }
     };
 
-    pub fn writeSequence(self: Color, wr: std.io.AnyWriter, ctype: ColorType) !void {
+    pub fn writeSequence(self: Color, wr: *std.Io.Writer, ctype: ColorType) !void {
         // fg = 38; color | reset = 39
         // bg = 48; color | reset = 49
         // ul = 58; color | reset = 59
@@ -574,9 +810,9 @@ pub const Color = union(enum(u8)) {
         try wr.writeAll("\x1B[");
 
         if (self == .Reset) {
-            try std.fmt.format(wr, "{}", .{ctype.indicator() + 1});
+            try wr.print("{}", .{ctype.indicator() + 1});
         } else {
-            try std.fmt.format(wr, "{};", .{ctype.indicator()});
+            try wr.print("{};", .{ctype.indicator()});
             const color = switch (self) {
                 .Black => "5;0",
                 .DarkGrey => "5;8",
