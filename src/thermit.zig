@@ -106,8 +106,8 @@ var signalHandlerInstalled = false;
 /// A set of pipes to the signal handler to write to
 var handleDataPipe: std.posix.fd_t = -1;
 
-// fn (sig: i32, info: *const posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.C) noreturn {
-fn sigWinchHandler(sig: i32, _: *const std.posix.siginfo_t, _: ?*anyopaque) callconv(.C) void {
+// fn (sig: i32, info: *const posix.siginfo_t, ctx_ptr: ?*anyopaque) callconv(.c) noreturn {
+fn sigWinchHandler(sig: i32, _: *const std.posix.siginfo_t, _: ?*anyopaque) callconv(.c) void {
     std.debug.assert(sig == std.posix.SIG.WINCH);
 
     if (handleDataPipe < 0) return;
