@@ -26,17 +26,20 @@ pub const Term = struct {
     cursor: ?trm.Size = null,
 
     a: std.mem.Allocator,
+    io: std.Io,
 
     pub fn init(a: std.mem.Allocator) !Term {
-        const fd = try std.posix.open("/dev/tty", .{ .ACCMODE = .RDWR }, 0);
-        const file = std.Io.File{ .handle = fd };
+        const io: std.Io = .{ .userdata = undefined, .vtable = undefined };
+        const file = try std.Io.Dir.cwd().openFile(io, "/dev/tty", .{ .ACCMODE = .RDWR });
+        errdefer file.close(io);
 
-        try trm.enterAlternateScreen(file.writer());
+        trm.enterAlternateScreen(file.handle) catch {};
+
         var tty = try trm.Terminal.init(file);
 
         try tty.enableRawMode();
 
-        const size = try trm.getWindowSize(fd);
+        const size = try trm.getWindowSize(file.handle);
 
         const buffer = try a.alloc(Cell, size.x * size.y);
 
@@ -45,17 +48,18 @@ pub const Term = struct {
             .buffer = buffer,
             .size = size,
             .a = a,
+            .io = io,
         };
     }
 
     pub fn deinit(self: *Term) void {
-        const wr = self.tty.f.writer();
-        trm.cursorShow(wr) catch {};
+        var wr_buf: [4096]u8 = undefined;
+        const wr = self.tty.f.writer(self.io, &wr_buf);
+        trm.cursorShow(wr.interface) catch {};
+        trm.leaveAlternateScreen(wr.interface) catch {};
 
         self.tty.disableRawMode() catch {};
-        trm.leaveAlternateScreen(wr) catch {};
-
-        self.tty.f.close();
+        self.tty.f.close(self.io);
         self.tty.deinit();
 
         self.a.free(self.buffer);
@@ -122,10 +126,12 @@ pub const Term = struct {
     }
 
     /// Flushes out the current buffer to the screen
-    pub fn finish(self: Term) !void {
-        var buf = std.ArrayList(u8).init(self.a);
-        defer buf.deinit();
-        const wr = buf.writer();
+    pub fn finish(self: *Term) !void {
+        var buf: std.ArrayListUnmanaged(u8) = .{ .items = &.{}, .capacity = 0 };
+        defer buf.deinit(self.a);
+
+        var wr_buf: [4096]u8 = undefined;
+        const wr = self.tty.f.writer(self.io, &wr_buf).interface;
 
         try trm.cursorHide(wr);
         // try trm.clear(wr, .All);
@@ -153,12 +159,12 @@ pub const Term = struct {
             // TODO: check modifier is same and change update if not
 
             if (cell.fg != fg) {
-                try cell.fg.writeSequence(wr.any(), .Foreground);
+                try cell.fg.writeSequence(wr, .Foreground);
                 fg = cell.fg;
             }
 
             if (cell.bg != bg) {
-                try cell.bg.writeSequence(wr.any(), .Background);
+                try cell.bg.writeSequence(wr, .Background);
                 bg = cell.bg;
             }
 
@@ -174,7 +180,7 @@ pub const Term = struct {
         } // else keep cursor hidden
 
         // write buffer to terminal
-        try self.tty.f.writeAll(buf.items);
+        try self.tty.f.writer(self.io, &wr_buf).interface.writeAll(buf.items);
 
         // let the terminal deal with all the shit we just wrote
         try std.posix.syncfs(self.tty.f.handle);
